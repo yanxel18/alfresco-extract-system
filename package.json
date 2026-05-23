@@ -1,0 +1,25 @@
+{
+  "name": "alfresco-extract-system",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Alfresco site extraction system — root workspace scripts",
+  "scripts": {
+    "dev": "pwsh -File ./start-dev.ps1",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && python -m uvicorn app.main:app --reload --port 8000",
+    "dev:worker": "cd backend && python -m celery -A worker.celery_app worker --loglevel=info --pool=solo",
+    "dev:redis": "docker run -d --name alfresco-redis -p 6379:6379 redis:7-alpine || docker start alfresco-redis",
+    "docker:up": "docker compose -f docker-compose.yml up -d",
+    "docker:up:build": "docker compose -f docker-compose.yml up -d --build",
+    "docker:down": "docker compose -f docker-compose.yml down",
+    "docker:down:volumes": "docker compose -f docker-compose.yml down -v",
+    "docker:restart": "docker compose -f docker-compose.yml restart",
+    "docker:ps": "docker compose -f docker-compose.yml ps",
+    "docker:logs": "docker compose -f docker-compose.yml logs -f",
+    "docker:logs:backend": "docker compose -f docker-compose.yml logs -f backend",
+    "docker:logs:worker": "docker compose -f docker-compose.yml logs -f worker",
+    "docker:logs:frontend": "docker compose -f docker-compose.yml logs -f frontend",
+    "docker:logs:redis": "docker compose -f docker-compose.yml logs -f redis",
+    "install:frontend": "cd frontend && npm install"
+  }
+}

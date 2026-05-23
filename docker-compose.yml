@@ -1,0 +1,107 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  local_db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aes_user
+      POSTGRES_PASSWORD: aes_pass
+      POSTGRES_DB: aes_tracking
+    ports:
+      - "5433:5432" # exposed so you can inspect aes_tracking from any DB client
+    volumes:
+      - local_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aes_user -d aes_tracking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  target_db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: target_user
+      POSTGRES_PASSWORD: target_pass
+      POSTGRES_DB: target_files
+    ports:
+      - "5434:5432" # exposed so you can inspect the simulated target DB from any DB client
+    volumes:
+      - target_db_data:/var/lib/postgresql/data
+      - ./docker/target_db_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U target_user -d target_files"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      no_cache: true
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./exports:/app/exports # extracted files on host
+      - db_data:/app/data # SQLite shared with worker
+      - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
+      - ./target-storage:/app/target-storage # simulated target file storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      local_db:
+        condition: service_healthy
+      target_db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      no_cache: true
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      no_cache: true
+    restart: unless-stopped
+    command: celery -A worker.celery_app worker --loglevel=info --concurrency=2
+    env_file: .env
+    volumes:
+      - ./exports:/app/exports # write copied files here
+      - db_data:/app/data # same SQLite as backend
+      - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
+      - ./target-storage:/app/target-storage # simulated target file storage
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      target_db:
+        condition: service_healthy
+
+volumes:
+  db_data: # persistent named volume for SQLite job tracking DB
+  local_db_data: # persistent PostgreSQL data for job tracking
+  target_db_data: # persistent PostgreSQL data for simulated target system

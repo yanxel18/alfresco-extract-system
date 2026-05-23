@@ -1,0 +1,181 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  min-height: 100vh;
+}
+
+header {
+  background: #16213e;
+  color: #fff;
+  padding: 1.5rem 2rem;
+}
+header h1 {
+  font-size: 1.6rem;
+}
+header p {
+  opacity: 0.7;
+  font-size: 0.9rem;
+  margin-top: 0.3rem;
+}
+
+main {
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.card h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: #16213e;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.form-row select {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #cdd0d8;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+button {
+  padding: 0.55rem 1.2rem;
+  border: none;
+  border-radius: 6px;
+  background: #0f3460;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+button:hover {
+  background: #16213e;
+}
+
+.error {
+  color: #c0392b;
+  margin-top: 0.5rem;
+  font-size: 0.88rem;
+}
+.hidden {
+  display: none !important;
+}
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+th {
+  background: #f7f8fa;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 2px solid #e3e6ed;
+  color: #555;
+}
+td {
+  padding: 0.65rem 0.8rem;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+}
+tr:hover td {
+  background: #fafbff;
+}
+.empty {
+  text-align: center;
+  color: #aaa;
+  padding: 2rem;
+}
+.fail {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.badge-created {
+  background: #ecf0f1;
+  color: #555;
+}
+.badge-scanning {
+  background: #d6eaff;
+  color: #1565c0;
+}
+.badge-scanned {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.badge-copying {
+  background: #fff3e0;
+  color: #e65100;
+}
+.badge-done {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+.badge-paused {
+  background: #f3e5f5;
+  color: #6a1b9a;
+}
+.badge-failed {
+  background: #ffebee;
+  color: #b71c1c;
+}
+
+/* Progress bar */
+.progress-bar {
+  height: 7px;
+  background: #e3e6ed;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0f3460, #1565c0);
+  transition: width 0.4s ease;
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.actions button {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+.actions a {
+  text-decoration: none;
+}
