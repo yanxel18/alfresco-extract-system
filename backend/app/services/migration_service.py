@@ -100,16 +100,28 @@ def migrate_file_record(
     target_session: Session,
     file_record: FileRecord,
     folder_id: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     """
     Copy the physical file to target-storage/ (UUID-named) and INSERT a row
     into the target DB files table.
 
-    Returns (target_file_id, uuid_filename).
+    Returns (target_file_id, uuid_filename, is_duplicate).
+    is_duplicate=True means the node_ref already existed in the target DB —
+    no file was copied and the existing record was reused.
     Raises FileNotFoundError if the source file is missing.
     """
     if not file_record.local_export_path:
         raise ValueError(f"FileRecord {file_record.id} has no local_export_path")
+
+    # Deduplication check: if this Alfresco node was already migrated (from another
+    # job or a re-run), reuse the existing target file row instead of inserting a duplicate.
+    if file_record.node_ref:
+        existing = target_session.execute(
+            text("SELECT id::text, uuid_filename FROM files WHERE source_node_ref = :nr LIMIT 1"),
+            {"nr": file_record.node_ref},
+        ).fetchone()
+        if existing:
+            return existing[0], existing[1], True
 
     src = Path(file_record.local_export_path)
     if not src.exists():
@@ -161,7 +173,7 @@ def migrate_file_record(
         },
     ).fetchone()
     target_session.commit()
-    return row[0], uuid_filename
+    return row[0], uuid_filename, False
 
 
 # ---------------------------------------------------------------------------

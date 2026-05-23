@@ -164,15 +164,20 @@ def migrate_site_task(self, job_id: int):
                 folder_parts = parse_folder_parts(fr.full_path)
                 folder_id = ensure_folder_path(target_db, job.site_name, folder_parts)
 
-                target_file_id, uuid_fn = migrate_file_record(target_db, fr, folder_id)
+                target_file_id, uuid_fn, is_duplicate = migrate_file_record(target_db, fr, folder_id)
 
                 mr.target_file_id = target_file_id
                 mr.target_folder_id = folder_id
                 mr.uuid_filename = uuid_fn
-                mr.status = MigrationStatus.migrated
-                mr.error_msg = None
-                mr.migrated_at = datetime.utcnow()
                 mr.duration_ms = int((time.perf_counter() - t0) * 1000)
+
+                if is_duplicate:
+                    mr.status = MigrationStatus.skipped
+                    mr.error_msg = "Already migrated from another job (node_ref already exists in target)"
+                else:
+                    mr.status = MigrationStatus.migrated
+                    mr.error_msg = None
+                    mr.migrated_at = datetime.utcnow()
 
             except Exception as exc:
                 logger.exception(

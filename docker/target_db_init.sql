@@ -48,3 +48,7 @@ CREATE TABLE IF NOT EXISTS files (
 CREATE INDEX IF NOT EXISTS idx_files_folder_id     ON files(folder_id);
 CREATE INDEX IF NOT EXISTS idx_files_uuid_filename ON files(uuid_filename);
 CREATE INDEX IF NOT EXISTS idx_folders_parent_id   ON folders(parent_id);
+
+-- Prevent duplicate migrations: each Alfresco node_ref can only exist once.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_source_node_ref
+    ON files(source_node_ref) WHERE source_node_ref IS NOT NULL;

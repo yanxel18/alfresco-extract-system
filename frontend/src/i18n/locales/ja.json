@@ -166,7 +166,7 @@
     "queued": "キュー待ち…",
     "migrated": "移行済",
     "failed": "失敗",
-    "skipped": "スキップ"
+    "skipped": "スキップ（重複）"
   },
   "migration": {
     "tab": "マイグレーション",
