@@ -713,7 +713,7 @@ export function JobDetailPage() {
             {t("migration.tab")}
             {migration && migration.total > 0 && (
               <Badge size="xs" variant="light" color="teal" ml="xs">
-                {migration.migrated}/{migration.total}
+                {migration.migrated + migration.skipped}/{migration.total}
               </Badge>
             )}
           </Tabs.Tab>
@@ -1040,7 +1040,7 @@ export function JobDetailPage() {
                 <Progress
                   value={
                     migration.total > 0
-                      ? Math.round((migration.migrated / migration.total) * 100)
+                      ? Math.round(((migration.migrated + migration.skipped) / migration.total) * 100)
                       : 0
                   }
                   color="teal"
