@@ -3,6 +3,7 @@ Celery tasks for the Alfresco extraction system.
 Both tasks are idempotent and resumable — safe to re-run on the same job_id.
 """
 import logging
+import time
 from datetime import datetime
 from celery import shared_task
 from sqlalchemy.orm import Session
@@ -69,6 +70,7 @@ def migrate_site_task(self, job_id: int):
     - Copies files to target-storage/ renamed as UUIDs.
     - Idempotent: already-migrated MigrationRecords are skipped.
     - Pause-aware: checks job.status between files.
+    - Records per-file duration_ms for frontend display.
     """
     from app.db.target_db import TargetSession
     from app.models.migration import MigrationRecord, MigrationStatus
@@ -88,6 +90,7 @@ def migrate_site_task(self, job_id: int):
 
         job.status = JobStatus.migrating
         job.error_msg = None
+        job.migration_started_at = datetime.utcnow()
         job.updated_at = datetime.utcnow()
         local_db.commit()
         logger.info("[Task] migrate_site_task started for job_id=%d", job_id)
@@ -100,6 +103,24 @@ def migrate_site_task(self, job_id: int):
         )
         logger.info("Found %d copied files to migrate for job %d", len(copied_records), job_id)
 
+        # Pre-create all pending MigrationRecord rows that don't already exist.
+        # This makes "Not Yet Migrated" count down live as migration progresses.
+        existing_mr_ids = {
+            mr.file_record_id
+            for mr in local_db.query(MigrationRecord.file_record_id)
+            .filter(MigrationRecord.job_id == job_id)
+            .all()
+        }
+        new_mrs = [
+            MigrationRecord(job_id=job_id, file_record_id=fr.id, status=MigrationStatus.pending)
+            for fr in copied_records
+            if fr.id not in existing_mr_ids
+        ]
+        if new_mrs:
+            local_db.bulk_save_objects(new_mrs)
+            local_db.commit()
+            logger.info("Pre-created %d pending MigrationRecord rows for job %d", len(new_mrs), job_id)
+
         failed_count = 0
 
         for idx, fr in enumerate(copied_records):
@@ -110,7 +131,7 @@ def migrate_site_task(self, job_id: int):
                     logger.info("[Task] migrate_site_task paused at idx=%d for job %d", idx, job_id)
                     return
 
-            # Check for existing MigrationRecord
+            # Fetch the (now pre-existing) MigrationRecord
             mr: MigrationRecord | None = (
                 local_db.query(MigrationRecord)
                 .filter(
@@ -124,9 +145,12 @@ def migrate_site_task(self, job_id: int):
                 continue  # Already done — idempotent skip
 
             if mr is None:
-                mr = MigrationRecord(job_id=job_id, file_record_id=fr.id)
+                # Defensive fallback (shouldn't happen after pre-creation above)
+                mr = MigrationRecord(job_id=job_id, file_record_id=fr.id, status=MigrationStatus.pending)
                 local_db.add(mr)
                 local_db.flush()
+
+            t0 = time.perf_counter()
 
             try:
                 # Skip nodes with no exported file (folders / skipped nodes)
@@ -146,6 +170,7 @@ def migrate_site_task(self, job_id: int):
                 mr.status = MigrationStatus.migrated
                 mr.error_msg = None
                 mr.migrated_at = datetime.utcnow()
+                mr.duration_ms = int((time.perf_counter() - t0) * 1000)
 
             except Exception as exc:
                 logger.exception(
@@ -154,6 +179,7 @@ def migrate_site_task(self, job_id: int):
                 target_db.rollback()  # Clear the broken transaction before the next file
                 mr.status = MigrationStatus.failed
                 mr.error_msg = str(exc)
+                mr.duration_ms = int((time.perf_counter() - t0) * 1000)
                 failed_count += 1
 
             job.updated_at = datetime.utcnow()
@@ -191,49 +217,3 @@ def migrate_site_task(self, job_id: int):
         local_db.close()
         target_db.close()
 
-
-
-@celery_app.task(bind=True, name="tasks.extract_site", max_retries=3, default_retry_delay=30)
-def extract_site_task(self, job_id: int):
-    """
-    Phase 1: Scan Alfresco DB and populate FileRecord rows + metadata CSV.
-    Resumes from where it left off if interrupted.
-    """
-    db: Session = LocalSession()
-    try:
-        logger.info("[Task] extract_site_task started for job_id=%d", job_id)
-        run_extraction(job_id, db)
-        logger.info("[Task] extract_site_task complete for job_id=%d", job_id)
-    except Exception as exc:
-        logger.exception("[Task] extract_site_task failed for job_id=%d: %s", job_id, exc)
-        job: Job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
-            job.status = JobStatus.failed
-            job.error_msg = str(exc)
-            db.commit()
-        raise self.retry(exc=exc)
-    finally:
-        db.close()
-
-
-@celery_app.task(bind=True, name="tasks.copy_site", max_retries=3, default_retry_delay=60)
-def copy_site_task(self, job_id: int):
-    """
-    Phase 2: Copy physical files from contentstore to the export directory.
-    Resumes from where it left off — only processes pending/failed FileRecords.
-    """
-    db: Session = LocalSession()
-    try:
-        logger.info("[Task] copy_site_task started for job_id=%d", job_id)
-        run_copy(job_id, db)
-        logger.info("[Task] copy_site_task complete for job_id=%d", job_id)
-    except Exception as exc:
-        logger.exception("[Task] copy_site_task failed for job_id=%d: %s", job_id, exc)
-        job: Job = db.query(Job).filter(Job.id == job_id).first()
-        if job:
-            job.status = JobStatus.failed
-            job.error_msg = str(exc)
-            db.commit()
-        raise self.retry(exc=exc)
-    finally:
-        db.close()

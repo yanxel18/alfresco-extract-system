@@ -33,6 +33,7 @@ export interface Job {
   total_size_bytes: number;
   copied_size_bytes: number;
   copy_started_at: string | null;
+  migration_started_at: string | null;
   celery_task_id?: string;
   error_msg?: string;
   selected_folders?: string;
@@ -76,6 +77,7 @@ export interface MigrationRecord {
   status: MigrationStatus;
   error_msg: string | null;
   migrated_at: string | null;
+  duration_ms: number | null;
   original_name: string | null;
   original_path: string | null;
 }
@@ -89,6 +91,7 @@ export interface MigrationProgress {
   failed: number;
   pending: number;
   skipped: number;
+  migration_started_at: string | null;
   records: MigrationRecord[];
 }
 

@@ -22,8 +22,10 @@ def run_copy(job_id: int, local_db: Session) -> None:
     """
     Main Phase 2 entry point called from the Celery task.
     Copies files from contentstore to export directory using a thread pool.
+    Uses a true sliding-window pool: as soon as one file finishes, the next
+    one starts — no batch-boundary idle time.
     Commits after every completed file so the frontend polls see live progress.
-    Checks for pause signal between batches.
+    Checks for pause signal every 10 completions.
     """
     job: Job = local_db.query(Job).filter(Job.id == job_id).first()
     if not job:
@@ -47,62 +49,97 @@ def run_copy(job_id: int, local_db: Session) -> None:
     total = len(pending_records)
     concurrency = settings.copy_concurrency
     logger.info(
-        "Copying %d files for job %d with concurrency=%d", total, job_id, concurrency
+        "Copying %d files for job %d with concurrency=%d (sliding window)",
+        total, job_id, concurrency,
     )
 
-    idx = 0
-    while idx < total:
-        # Pause check between batches (re-read job status from DB)
-        local_db.refresh(job)
-        if job.status == JobStatus.paused:
-            logger.info("[Copy] Job %d paused at file %d/%d", job_id, idx, total)
+    paused = False
+    completed_count = 0
+
+    # Submit all records to the pool upfront; ThreadPoolExecutor enforces
+    # max_workers so only `concurrency` copies run simultaneously.
+    # As each finishes, the next queued one starts immediately (true sliding window).
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        future_to_rec = {
+            pool.submit(
+                _copy_file,
+                rec.content_url,
+                job.site_name,
+                rec.full_path,
+                rec.file_name,
+            ): rec
+            for rec in pending_records
+        }
+
+        for future in as_completed(future_to_rec):
+            rec = future_to_rec[future]
+            try:
+                dest_path, elapsed = future.result()
+                rec.status = FileStatus.copied
+                rec.local_export_path = str(dest_path)
+                rec.error_msg = None
+                file_bytes = rec.file_size_bytes or 0
+                rec.transfer_speed_bps = (
+                    int(file_bytes / elapsed) if elapsed > 0 else None
+                )
+                job.copied_files += 1
+                job.copied_size_bytes += file_bytes
+            except Exception as exc:
+                logger.exception("Failed copying node %s: %s", rec.node_ref, exc)
+                rec.status = FileStatus.failed
+                rec.error_msg = str(exc)
+                job.failed_files += 1
+
+            # Commit per-file so frontend sees live progress
+            job.updated_at = datetime.utcnow()
             local_db.commit()
-            return
+            completed_count += 1
 
-        batch = pending_records[idx : idx + concurrency]
+            if completed_count % 100 == 0:
+                logger.info(
+                    "Copied %d/%d files, %d bytes so far…",
+                    job.copied_files, total, job.copied_size_bytes,
+                )
 
-        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
-            future_to_rec = {
-                pool.submit(
-                    _copy_file,
-                    rec.content_url,
-                    job.site_name,
-                    rec.full_path,
-                    rec.file_name,
-                ): rec
-                for rec in batch
-            }
-            for future in as_completed(future_to_rec):
-                rec = future_to_rec[future]
-                try:
-                    dest_path, elapsed = future.result()
-                    rec.status = FileStatus.copied
-                    rec.local_export_path = str(dest_path)
-                    rec.error_msg = None
-                    file_bytes = rec.file_size_bytes or 0
-                    rec.transfer_speed_bps = (
-                        int(file_bytes / elapsed) if elapsed > 0 else None
+            # Pause check every 10 completions
+            if completed_count % 10 == 0:
+                local_db.refresh(job)
+                if job.status == JobStatus.paused:
+                    logger.info(
+                        "[Copy] Job %d paused after %d/%d files",
+                        job_id, completed_count, total,
                     )
-                    job.copied_files += 1
-                    job.copied_size_bytes += file_bytes
-                except Exception as exc:
-                    logger.exception("Failed copying node %s: %s", rec.node_ref, exc)
-                    rec.status = FileStatus.failed
-                    rec.error_msg = str(exc)
-                    job.failed_files += 1
+                    # Cancel futures that haven't started yet
+                    for f in future_to_rec:
+                        f.cancel()
+                    paused = True
+                    break
 
-                # Commit per-file so frontend sees live progress
-                job.updated_at = datetime.utcnow()
-                local_db.commit()
+    if paused:
+        local_db.commit()
+        return
 
-        idx += concurrency
-        if idx % 100 == 0 or idx >= total:
-            logger.info(
-                "Copied %d/%d files, %d bytes so far…",
-                job.copied_files,
-                total,
-                job.copied_size_bytes,
-            )
+    # Mark any remaining pending FileRecords that had no content_url as skipped.
+    # These are nodes that were scanned but have no physical file (e.g. folder nodes
+    # that slipped through, or nodes Alfresco never stored content for).
+    no_content_pending = (
+        local_db.query(FileRecord)
+        .filter(
+            FileRecord.job_id == job_id,
+            FileRecord.status == FileStatus.pending,
+            FileRecord.content_url.is_(None),
+        )
+        .all()
+    )
+    for rec in no_content_pending:
+        rec.status = FileStatus.skipped
+        rec.error_msg = "No content URL — node has no physical file in contentstore"
+    if no_content_pending:
+        local_db.commit()
+        logger.info(
+            "Marked %d no-content records as skipped for job %d",
+            len(no_content_pending), job_id,
+        )
 
     # Regenerate final CSV from DB so local_export_path is fully populated
     try:

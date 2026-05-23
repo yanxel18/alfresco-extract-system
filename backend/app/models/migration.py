@@ -28,5 +28,6 @@ class MigrationRecord(Base):
     status = Column(Enum(MigrationStatus), default=MigrationStatus.pending, nullable=False, index=True)
     error_msg = Column(Text, nullable=True)
     migrated_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)  # milliseconds taken to migrate this file
 
     file_record = relationship("FileRecord", lazy="joined", foreign_keys=[file_record_id])

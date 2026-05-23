@@ -34,6 +34,7 @@ class JobOut(BaseModel):
     total_size_bytes: int
     copied_size_bytes: int
     copy_started_at: Optional[datetime]
+    migration_started_at: Optional[datetime]
     celery_task_id: Optional[str]
     error_msg: Optional[str]
     selected_folders: Optional[str]
@@ -43,7 +44,7 @@ class JobOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    @field_serializer("copy_started_at", "created_at", "updated_at")
+    @field_serializer("copy_started_at", "migration_started_at", "created_at", "updated_at")
     def serialize_dt(self, v: datetime | None) -> str | None:
         # Naive datetimes are stored as UTC in PostgreSQL. Append 'Z' so
         # browsers parse them as UTC instead of local time.
@@ -128,6 +129,7 @@ class MigrationRecordOut(BaseModel):
     status: str
     error_msg: Optional[str]
     migrated_at: Optional[datetime]
+    duration_ms: Optional[int] = None
     original_name: Optional[str] = None
     original_path: Optional[str] = None
 
@@ -147,4 +149,5 @@ class MigrationProgressOut(BaseModel):
     failed: int
     pending: int
     skipped: int
+    migration_started_at: Optional[datetime] = None
     records: list[MigrationRecordOut]

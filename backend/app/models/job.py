@@ -52,6 +52,7 @@ class Job(Base):
     # (e.g. unchecked within a selected folder).
     excluded_files = Column(Text, nullable=True)
     copy_started_at = Column(DateTime, nullable=True)
+    migration_started_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

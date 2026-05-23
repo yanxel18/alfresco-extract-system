@@ -62,6 +62,7 @@ def _migration_progress(
         failed=counts[MigrationStatus.failed],
         pending=counts[MigrationStatus.pending],
         skipped=counts[MigrationStatus.skipped],
+        migration_started_at=job.migration_started_at,
         records=[_mr_out(r) for r in page_records],
     )
 
@@ -79,6 +80,7 @@ def _mr_out(r: MigrationRecord) -> MigrationRecordOut:
         status=r.status,
         error_msg=r.error_msg,
         migrated_at=r.migrated_at,
+        duration_ms=r.duration_ms,
         original_name=fr.file_name if fr else None,
         original_path=fr.full_path if fr else None,
     )

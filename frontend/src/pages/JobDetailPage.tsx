@@ -105,6 +105,8 @@ export function JobDetailPage() {
   const [page, setPage] = useState(1);
   const [migrationPage, setMigrationPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<FileStatus | "">("");
+  const [migrationSpeed, setMigrationSpeed] = useState(0); // files/sec
+  const [migrationElapsedSec, setMigrationElapsedSec] = useState(0);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure();
   const [revertOpened, { open: openRevert, close: closeRevert }] =
@@ -141,6 +143,7 @@ export function JobDetailPage() {
 
   // Speed / ETA / elapsed tracking
   const prevSnapshotRef = useRef<{ bytes: number; time: number } | null>(null);
+  const prevMigrationSnapshotRef = useRef<{ count: number; time: number } | null>(null);
   const [copySpeed, setCopySpeed] = useState<number>(0); // bytes/sec
   const [elapsedSec, setElapsedSec] = useState<number>(0);
 
@@ -190,6 +193,51 @@ export function JobDetailPage() {
     (job?.total_size_bytes ?? 0) - (job?.copied_size_bytes ?? 0);
   const etaSec =
     isJobCopying && copySpeed > 0 ? remainingBytes / copySpeed : null;
+
+  // Migration speed/ETA tracking (files/sec)
+  const isJobMigrating = job?.status === "migrating";
+
+  useEffect(() => {
+    if (!migration || !isJobMigrating) {
+      prevMigrationSnapshotRef.current = null;
+      return;
+    }
+    const now = Date.now();
+    if (prevMigrationSnapshotRef.current) {
+      const deltaSec = (now - prevMigrationSnapshotRef.current.time) / 1000;
+      const deltaFiles = migration.migrated - prevMigrationSnapshotRef.current.count;
+      if (deltaSec > 0 && deltaFiles > 0) {
+        setMigrationSpeed(deltaFiles / deltaSec);
+      }
+    }
+    prevMigrationSnapshotRef.current = { count: migration.migrated, time: now };
+  }, [migration?.migrated, isJobMigrating]);
+
+  // Tick migration elapsed every second
+  useEffect(() => {
+    if (!isJobMigrating || !migration?.migration_started_at) return;
+    const startMs = new Date(migration.migration_started_at).getTime();
+    setMigrationElapsedSec(Math.floor((Date.now() - startMs) / 1000));
+    const timerId = setInterval(() => {
+      setMigrationElapsedSec(Math.floor((Date.now() - startMs) / 1000));
+    }, 1000);
+    return () => clearInterval(timerId);
+  }, [isJobMigrating, migration?.migration_started_at]);
+
+  const migrationEtaSec =
+    isJobMigrating && migrationSpeed > 0 && migration
+      ? migration.pending / migrationSpeed
+      : null;
+
+  const finalMigrationElapsedSec =
+    migration?.migration_started_at &&
+    (job?.status === "migrated" || job?.status === "failed" || job?.status === "paused")
+      ? Math.floor(
+          (new Date(job!.updated_at).getTime() -
+            new Date(migration.migration_started_at).getTime()) /
+            1000,
+        )
+      : null;
 
   const copyProgress =
     job && job.total_files > 0
@@ -928,32 +976,37 @@ export function JobDetailPage() {
                 <Grid>
                   {[
                     {
-                      label: t("migration.total"),
+                      label: t("migration.inRun"),
                       value: migration.total,
+                      sub: t("migration.inRunHint"),
                       color: "gray",
                       icon: <Minus size={18} />,
                     },
                     {
                       label: t("migration.migrated"),
                       value: migration.migrated,
+                      sub: null,
                       color: "teal",
                       icon: <CheckCircle size={18} />,
                     },
                     {
                       label: t("migration.failed"),
                       value: migration.failed,
+                      sub: null,
                       color: migration.failed > 0 ? "red" : "gray",
                       icon: <XCircle size={18} />,
                     },
                     {
                       label: t("migration.pending"),
                       value: migration.pending,
+                      sub: t("migration.pendingHint"),
                       color: "blue",
                       icon: <Clock size={18} />,
                     },
                     {
                       label: t("migration.skipped"),
                       value: migration.skipped,
+                      sub: null,
                       color: "yellow",
                       icon: <Minus size={18} />,
                     },
@@ -971,6 +1024,11 @@ export function JobDetailPage() {
                         <Text size="xl" fw={700}>
                           {s.value.toLocaleString()}
                         </Text>
+                        {s.sub && (
+                          <Text size="xs" c="dimmed" mt={2}>
+                            {s.sub}
+                          </Text>
+                        )}
                       </Card>
                     </Grid.Col>
                   ))}
@@ -986,6 +1044,53 @@ export function JobDetailPage() {
                   animated={job?.status === "migrating"}
                   size="md"
                 />
+
+                {/* Migration elapsed / speed / ETA strip */}
+                {migration.migration_started_at && (
+                  <>
+                    <Divider my="xs" />
+                    <Group gap="xl" wrap="nowrap">
+                      <Stack gap={2} align="center" style={{ flex: 1 }}>
+                        <Text size="xs" c="dimmed">
+                          {finalMigrationElapsedSec !== null
+                            ? t("jobDetail.totalTime")
+                            : t("jobDetail.elapsed")}
+                        </Text>
+                        <Text size="sm" fw={600}>
+                          {formatDuration(
+                            finalMigrationElapsedSec !== null
+                              ? finalMigrationElapsedSec
+                              : migrationElapsedSec,
+                          )}
+                        </Text>
+                      </Stack>
+                      {isJobMigrating && (
+                        <>
+                          <Stack gap={2} align="center" style={{ flex: 1 }}>
+                            <Text size="xs" c="dimmed">
+                              {t("jobDetail.speed")}
+                            </Text>
+                            <Text size="sm" fw={600}>
+                              {migrationSpeed > 0
+                                ? `${migrationSpeed.toFixed(2)} files/s`
+                                : t("jobDetail.calculating")}
+                            </Text>
+                          </Stack>
+                          <Stack gap={2} align="center" style={{ flex: 1 }}>
+                            <Text size="xs" c="dimmed">
+                              {t("jobDetail.eta")}
+                            </Text>
+                            <Text size="sm" fw={600}>
+                              {migrationEtaSec !== null
+                                ? formatDuration(migrationEtaSec)
+                                : t("jobDetail.calculating")}
+                            </Text>
+                          </Stack>
+                        </>
+                      )}
+                    </Group>
+                  </>
+                )}
               </>
             )}
 
@@ -999,6 +1104,7 @@ export function JobDetailPage() {
                       <Table.Th>{t("migration.originalPath")}</Table.Th>
                       <Table.Th>{t("migration.uuidFilename")}</Table.Th>
                       <Table.Th>{t("jobDetail.status")}</Table.Th>
+                      <Table.Th>{t("migration.duration")}</Table.Th>
                       <Table.Th>{t("migration.targetFolderId")}</Table.Th>
                       <Table.Th>{t("migration.targetFileId")}</Table.Th>
                       <Table.Th>{t("migration.migratedAt")}</Table.Th>
@@ -1025,6 +1131,15 @@ export function JobDetailPage() {
                         </Table.Td>
                         <Table.Td>
                           <MigrationStatusBadge status={rec.status} />
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" c="dimmed">
+                            {rec.duration_ms != null
+                              ? rec.duration_ms >= 1000
+                                ? `${(rec.duration_ms / 1000).toFixed(1)}s`
+                                : `${rec.duration_ms}ms`
+                              : "—"}
+                          </Text>
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed" truncate maw={200}>
