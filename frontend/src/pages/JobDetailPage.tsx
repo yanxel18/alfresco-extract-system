@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+
+/** Parse a server timestamp as UTC regardless of whether it carries a Z suffix. */
+function utcMs(ts: string): number {
+  return new Date(ts.endsWith("Z") || ts.includes("+") ? ts : ts + "Z").getTime();
+}
 import {
   Stack,
   Title,
@@ -167,7 +172,7 @@ export function JobDetailPage() {
   // Tick elapsed every second using server's copy_started_at — native setInterval auto-starts
   useEffect(() => {
     if (!isJobCopying || !job?.copy_started_at) return;
-    const startMs = new Date(job.copy_started_at).getTime();
+    const startMs = utcMs(job.copy_started_at);
     // Set immediately so there's no 0s flash
     setElapsedSec(Math.floor((Date.now() - startMs) / 1000));
     const id = setInterval(() => {
@@ -183,8 +188,7 @@ export function JobDetailPage() {
       job.status === "failed" ||
       job.status === "paused")
       ? Math.floor(
-          (new Date(job.updated_at).getTime() -
-            new Date(job.copy_started_at).getTime()) /
+          (utcMs(job.updated_at) - utcMs(job.copy_started_at)) /
             1000,
         )
       : null;
@@ -216,7 +220,7 @@ export function JobDetailPage() {
   // Tick migration elapsed every second
   useEffect(() => {
     if (!isJobMigrating || !migration?.migration_started_at) return;
-    const startMs = new Date(migration.migration_started_at).getTime();
+    const startMs = utcMs(migration.migration_started_at);
     setMigrationElapsedSec(Math.floor((Date.now() - startMs) / 1000));
     const timerId = setInterval(() => {
       setMigrationElapsedSec(Math.floor((Date.now() - startMs) / 1000));
@@ -233,8 +237,7 @@ export function JobDetailPage() {
     migration?.migration_started_at &&
     (job?.status === "migrated" || job?.status === "failed" || job?.status === "paused")
       ? Math.floor(
-          (new Date(job!.updated_at).getTime() -
-            new Date(migration.migration_started_at).getTime()) /
+          (utcMs(job!.updated_at) - utcMs(migration.migration_started_at)) /
             1000,
         )
       : null;
