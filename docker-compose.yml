@@ -53,7 +53,6 @@ services:
     env_file: .env
     volumes:
       - ./exports:/app/exports # extracted files on host
-      - db_data:/app/data # SQLite shared with worker
       - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
       - ./target-storage:/app/target-storage # simulated target file storage
     depends_on:
@@ -90,7 +89,6 @@ services:
     env_file: .env
     volumes:
       - ./exports:/app/exports # write copied files here
-      - db_data:/app/data # same SQLite as backend
       - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
       - ./target-storage:/app/target-storage # simulated target file storage
     depends_on:
@@ -102,6 +100,5 @@ services:
         condition: service_healthy
 
 volumes:
-  db_data: # persistent named volume for SQLite job tracking DB
   local_db_data: # persistent PostgreSQL data for job tracking
   target_db_data: # persistent PostgreSQL data for simulated target system

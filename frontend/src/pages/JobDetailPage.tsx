@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 
 /** Parse a server timestamp as UTC regardless of whether it carries a Z suffix. */
 function utcMs(ts: string): number {
-  return new Date(ts.endsWith("Z") || ts.includes("+") ? ts : ts + "Z").getTime();
+  return new Date(
+    ts.endsWith("Z") || ts.includes("+") ? ts : ts + "Z",
+  ).getTime();
 }
 import {
   Stack,
@@ -161,7 +163,10 @@ export function JobDetailPage() {
 
   // Speed / ETA / elapsed tracking
   const prevSnapshotRef = useRef<{ bytes: number; time: number } | null>(null);
-  const prevMigrationSnapshotRef = useRef<{ count: number; time: number } | null>(null);
+  const prevMigrationSnapshotRef = useRef<{
+    count: number;
+    time: number;
+  } | null>(null);
   const [copySpeed, setCopySpeed] = useState<number>(0); // bytes/sec
   const [elapsedSec, setElapsedSec] = useState<number>(0);
 
@@ -200,10 +205,7 @@ export function JobDetailPage() {
     (job.status === "done" ||
       job.status === "failed" ||
       job.status === "paused")
-      ? Math.floor(
-          (utcMs(job.updated_at) - utcMs(job.copy_started_at)) /
-            1000,
-        )
+      ? Math.floor((utcMs(job.updated_at) - utcMs(job.copy_started_at)) / 1000)
       : null;
 
   const remainingBytes =
@@ -222,7 +224,8 @@ export function JobDetailPage() {
     const now = Date.now();
     if (prevMigrationSnapshotRef.current) {
       const deltaSec = (now - prevMigrationSnapshotRef.current.time) / 1000;
-      const deltaFiles = migration.migrated - prevMigrationSnapshotRef.current.count;
+      const deltaFiles =
+        migration.migrated - prevMigrationSnapshotRef.current.count;
       if (deltaSec > 0 && deltaFiles > 0) {
         setMigrationSpeed(deltaFiles / deltaSec);
       }
@@ -248,7 +251,9 @@ export function JobDetailPage() {
 
   const finalMigrationElapsedSec =
     migration?.migration_started_at &&
-    (job?.status === "migrated" || job?.status === "failed" || job?.status === "paused")
+    (job?.status === "migrated" ||
+      job?.status === "failed" ||
+      job?.status === "paused")
       ? Math.floor(
           (utcMs(job!.updated_at) - utcMs(migration.migration_started_at)) /
             1000,
@@ -825,7 +830,10 @@ export function JobDetailPage() {
                           </Group>
                         </Table.Td>
                         <Table.Td>
-                          <FileStatusBadge status={file.status} active={isJobCopying} />
+                          <FileStatusBadge
+                            status={file.status}
+                            active={isJobCopying}
+                          />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed">
@@ -950,18 +958,20 @@ export function JobDetailPage() {
                   {t("migration.downloadSql")}
                 </Button>
               )}
-              {migration && migration.migrated > 0 && job?.status !== "migrating" && (
-                <Button
-                  size="sm"
-                  color="red"
-                  variant="light"
-                  leftSection={<Trash2 size={14} />}
-                  loading={migrationActions.revert.isPending}
-                  onClick={openRevert}
-                >
-                  {t("migration.revertMigration")}
-                </Button>
-              )}
+              {migration &&
+                migration.migrated > 0 &&
+                job?.status !== "migrating" && (
+                  <Button
+                    size="sm"
+                    color="red"
+                    variant="light"
+                    leftSection={<Trash2 size={14} />}
+                    loading={migrationActions.revert.isPending}
+                    onClick={openRevert}
+                  >
+                    {t("migration.revertMigration")}
+                  </Button>
+                )}
               <Tooltip label={t("common.retry")}>
                 <ActionIcon
                   variant="subtle"
@@ -1053,7 +1063,11 @@ export function JobDetailPage() {
                 <Progress
                   value={
                     migration.total > 0
-                      ? Math.round(((migration.migrated + migration.skipped) / migration.total) * 100)
+                      ? Math.round(
+                          ((migration.migrated + migration.skipped) /
+                            migration.total) *
+                            100,
+                        )
                       : 0
                   }
                   color="teal"
@@ -1131,12 +1145,23 @@ export function JobDetailPage() {
                     {migration.records.map((rec) => (
                       <Table.Tr key={rec.id}>
                         <Table.Td>
-                          <Text size="xs" truncate maw={180} title={rec.original_name ?? ""}>
+                          <Text
+                            size="xs"
+                            truncate
+                            maw={180}
+                            title={rec.original_name ?? ""}
+                          >
                             {rec.original_name ?? "—"}
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs" c="dimmed" truncate maw={220} title={rec.original_path ?? ""}>
+                          <Text
+                            size="xs"
+                            c="dimmed"
+                            truncate
+                            maw={220}
+                            title={rec.original_path ?? ""}
+                          >
                             {rec.original_path ?? "—"}
                           </Text>
                         </Table.Td>
@@ -1146,7 +1171,10 @@ export function JobDetailPage() {
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <MigrationStatusBadge status={rec.status} active={isJobMigrating} />
+                          <MigrationStatusBadge
+                            status={rec.status}
+                            active={isJobMigrating}
+                          />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed">

@@ -3,7 +3,7 @@ exports/
 node_modules/
 
 # Environment secrets
-.env
+
 .github
 # Python
 __pycache__/
@@ -16,8 +16,7 @@ dist/
 build/
 .venv/
 venv/
-env/
-.env.*
+
 
 # SQLite job tracking DB
 *.db
