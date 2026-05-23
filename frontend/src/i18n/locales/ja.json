@@ -163,6 +163,7 @@
   },
   "migrationStatus": {
     "pending": "待機中",
+    "queued": "キュー待ち…",
     "migrated": "移行済",
     "failed": "失敗",
     "skipped": "スキップ"

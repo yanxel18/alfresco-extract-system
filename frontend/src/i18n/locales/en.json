@@ -163,6 +163,7 @@
   },
   "migrationStatus": {
     "pending": "Pending",
+    "queued": "Queued…",
     "migrated": "Migrated",
     "failed": "Failed",
     "skipped": "Skipped"
