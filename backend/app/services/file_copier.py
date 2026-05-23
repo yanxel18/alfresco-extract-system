@@ -10,6 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.job import Job, FileRecord, JobStatus, FileStatus
@@ -25,14 +26,30 @@ def run_copy(job_id: int, local_db: Session) -> None:
     Uses a true sliding-window pool: as soon as one file finishes, the next
     one starts — no batch-boundary idle time.
     Commits after every completed file so the frontend polls see live progress.
-    Checks for pause signal every 10 completions.
+    Checks for pause signal every file.
     """
     job: Job = local_db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise ValueError(f"Job {job_id} not found")
 
+    # Reconcile counters from actual DB state (handles resume after pause/crash
+    # where the in-memory counter diverged from reality).
+    actual_copied: int = (
+        local_db.query(func.count(FileRecord.id))
+        .filter(FileRecord.job_id == job_id, FileRecord.status == FileStatus.copied)
+        .scalar() or 0
+    )
+    actual_size: int = (
+        local_db.query(func.coalesce(func.sum(FileRecord.file_size_bytes), 0))
+        .filter(FileRecord.job_id == job_id, FileRecord.status == FileStatus.copied)
+        .scalar() or 0
+    )
+    job.copied_files = actual_copied
+    job.copied_size_bytes = actual_size
+
     job.status = JobStatus.copying
-    job.copy_started_at = datetime.utcnow()
+    if not job.copy_started_at:
+        job.copy_started_at = datetime.utcnow()
     job.updated_at = datetime.utcnow()
     local_db.commit()
 
@@ -106,19 +123,18 @@ def run_copy(job_id: int, local_db: Session) -> None:
                     job.copied_files, total, job.copied_size_bytes,
                 )
 
-            # Pause check every 10 completions
-            if completed_count % 10 == 0:
-                local_db.refresh(job)
-                if job.status == JobStatus.paused:
-                    logger.info(
-                        "[Copy] Job %d paused after %d/%d files",
-                        job_id, completed_count, total,
-                    )
-                    # Cancel futures that haven't started yet
-                    for f in future_to_rec:
-                        f.cancel()
-                    paused = True
-                    break
+            # Pause check on every completion so small jobs also honour pause
+            local_db.refresh(job)
+            if job.status == JobStatus.paused:
+                logger.info(
+                    "[Copy] Job %d paused after %d/%d files",
+                    job_id, completed_count, total,
+                )
+                # Cancel futures that haven't started yet
+                for f in future_to_rec:
+                    f.cancel()
+                paused = True
+                break
 
     if paused:
         local_db.commit()
@@ -176,11 +192,32 @@ def run_copy(job_id: int, local_db: Session) -> None:
     except Exception as exc:
         logger.error("Failed to regenerate CSV for job %d: %s", job_id, exc)
 
-    if job.failed_files == 0:
+    # Final counter reconciliation — ensures progress bars reach 100% even when
+    # two concurrent tasks (pause + immediate resume) caused non-atomic increments.
+    final_copied: int = (
+        local_db.query(func.count(FileRecord.id))
+        .filter(FileRecord.job_id == job_id, FileRecord.status == FileStatus.copied)
+        .scalar() or 0
+    )
+    final_size: int = (
+        local_db.query(func.coalesce(func.sum(FileRecord.file_size_bytes), 0))
+        .filter(FileRecord.job_id == job_id, FileRecord.status == FileStatus.copied)
+        .scalar() or 0
+    )
+    final_failed: int = (
+        local_db.query(func.count(FileRecord.id))
+        .filter(FileRecord.job_id == job_id, FileRecord.status == FileStatus.failed)
+        .scalar() or 0
+    )
+    job.copied_files = final_copied
+    job.copied_size_bytes = final_size
+    job.failed_files = final_failed
+
+    if final_failed == 0:
         job.status = JobStatus.done
     else:
         job.status = JobStatus.failed
-        logger.warning("Job %d finished with %d failed files", job_id, job.failed_files)
+        logger.warning("Job %d finished with %d failed files", job_id, final_failed)
 
     job.updated_at = datetime.utcnow()
     local_db.commit()
