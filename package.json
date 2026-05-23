@@ -10,7 +10,7 @@
     "dev:worker": "cd backend && python -m celery -A worker.celery_app worker --loglevel=info --pool=solo",
     "dev:redis": "docker run -d --name alfresco-redis -p 6379:6379 redis:7-alpine || docker start alfresco-redis",
     "docker:up": "docker compose -f docker-compose.yml up -d",
-    "docker:up:build": "docker compose -f docker-compose.yml up -d --build",
+    "docker:up:build": "docker compose -f docker-compose.yml down && docker compose -f docker-compose.yml up -d --build",
     "docker:down": "docker compose -f docker-compose.yml down",
     "docker:down:volumes": "docker compose -f docker-compose.yml down -v",
     "docker:restart": "docker compose -f docker-compose.yml restart",

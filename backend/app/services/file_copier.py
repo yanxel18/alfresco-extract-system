@@ -56,6 +56,11 @@ def run_copy(job_id: int, local_db: Session) -> None:
     paused = False
     completed_count = 0
 
+    # Pre-capture per-record metadata before any commits expire SQLAlchemy objects.
+    # Accessing expired attributes (e.g. rec.file_size_bytes) inside the as_completed
+    # loop can trigger a full ORM reload that silently reverts pending attribute changes.
+    rec_meta: dict[int, int] = {rec.id: (rec.file_size_bytes or 0) for rec in pending_records}
+
     # Submit all records to the pool upfront; ThreadPoolExecutor enforces
     # max_workers so only `concurrency` copies run simultaneously.
     # As each finishes, the next queued one starts immediately (true sliding window).
@@ -78,7 +83,7 @@ def run_copy(job_id: int, local_db: Session) -> None:
                 rec.status = FileStatus.copied
                 rec.local_export_path = str(dest_path)
                 rec.error_msg = None
-                file_bytes = rec.file_size_bytes or 0
+                file_bytes = rec_meta.get(rec.id, 0)  # pre-captured; avoids lazy-load after expiry
                 rec.transfer_speed_bps = (
                     int(file_bytes / elapsed) if elapsed > 0 else None
                 )
@@ -118,6 +123,30 @@ def run_copy(job_id: int, local_db: Session) -> None:
     if paused:
         local_db.commit()
         return
+
+    # Defensive reconciliation: any record physically copied (local_export_path set)
+    # but still showing pending was missed by the as_completed loop due to session
+    # expiry / ORM state issues. Mark them as copied now.
+    missed = (
+        local_db.query(FileRecord)
+        .filter(
+            FileRecord.job_id == job_id,
+            FileRecord.status == FileStatus.pending,
+            FileRecord.local_export_path.isnot(None),
+        )
+        .all()
+    )
+    for rec in missed:
+        logger.warning(
+            "[Copy] Reconciling missed record id=%d (%s) — marking as copied",
+            rec.id, rec.file_name,
+        )
+        rec.status = FileStatus.copied
+        job.copied_files += 1
+        job.copied_size_bytes += rec_meta.get(rec.id, 0)
+    if missed:
+        job.updated_at = datetime.utcnow()
+        local_db.commit()
 
     # Mark any remaining pending FileRecords that had no content_url as skipped.
     # These are nodes that were scanned but have no physical file (e.g. folder nodes
