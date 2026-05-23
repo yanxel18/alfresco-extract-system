@@ -11,6 +11,7 @@ Responsibilities:
   MigrationRecords for manual audit or re-run.
 """
 import logging
+import os
 import shutil
 import uuid as uuid_lib
 from datetime import datetime
@@ -118,8 +119,12 @@ def migrate_file_record(
     new_uuid = str(uuid_lib.uuid4())
     uuid_filename = new_uuid + ext
 
-    settings.target_storage_path.mkdir(parents=True, exist_ok=True)
+    os.makedirs(str(settings.target_storage_path), exist_ok=True)
     dest = settings.target_storage_path / uuid_filename
+    # If a file already exists at dest (extremely unlikely UUID collision or re-run),
+    # remove it first so shutil.copy2 doesn't fail on some OS/FS combinations.
+    if dest.exists():
+        dest.unlink()
     shutil.copy2(str(src), str(dest))
 
     row = target_session.execute(
