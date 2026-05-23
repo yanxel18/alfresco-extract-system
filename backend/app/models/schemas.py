@@ -128,6 +128,8 @@ class MigrationRecordOut(BaseModel):
     status: str
     error_msg: Optional[str]
     migrated_at: Optional[datetime]
+    original_name: Optional[str] = None
+    original_path: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

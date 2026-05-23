@@ -189,6 +189,8 @@
     "targetFileId": "ターゲットファイルID",
     "targetFolderId": "ターゲットフォルダーID",
     "uuidFilename": "UUIDファイル名",
+    "originalName": "元のファイル名",
+    "originalPath": "元のパス",
     "migratedAt": "移行日時",
     "error": "エラー",
     "revertMigration": "移行を元に戻す",

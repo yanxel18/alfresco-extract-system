@@ -989,6 +989,8 @@ export function JobDetailPage() {
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
+                      <Table.Th>{t("migration.originalName")}</Table.Th>
+                      <Table.Th>{t("migration.originalPath")}</Table.Th>
                       <Table.Th>{t("migration.uuidFilename")}</Table.Th>
                       <Table.Th>{t("jobDetail.status")}</Table.Th>
                       <Table.Th>{t("migration.targetFolderId")}</Table.Th>
@@ -1001,7 +1003,17 @@ export function JobDetailPage() {
                     {migration.records.map((rec) => (
                       <Table.Tr key={rec.id}>
                         <Table.Td>
-                          <Text size="xs" truncate maw={220}>
+                          <Text size="xs" truncate maw={180} title={rec.original_name ?? ""}>
+                            {rec.original_name ?? "—"}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" c="dimmed" truncate maw={220} title={rec.original_path ?? ""}>
+                            {rec.original_path ?? "—"}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" truncate maw={180}>
                             {rec.uuid_filename ?? "—"}
                           </Text>
                         </Table.Td>

@@ -39,7 +39,25 @@ def _migration_progress(job: Job, db: Session) -> MigrationProgressOut:
         failed=counts[MigrationStatus.failed],
         pending=counts[MigrationStatus.pending],
         skipped=counts[MigrationStatus.skipped],
-        records=[MigrationRecordOut.model_validate(r) for r in records[-200:]],  # last 200
+        records=[_mr_out(r) for r in records[-200:]],  # last 200
+    )
+
+
+def _mr_out(r: MigrationRecord) -> MigrationRecordOut:
+    """Build MigrationRecordOut, adding original filename/path from the joined FileRecord."""
+    fr = r.file_record
+    return MigrationRecordOut(
+        id=r.id,
+        job_id=r.job_id,
+        file_record_id=r.file_record_id,
+        target_file_id=r.target_file_id,
+        target_folder_id=r.target_folder_id,
+        uuid_filename=r.uuid_filename,
+        status=r.status,
+        error_msg=r.error_msg,
+        migrated_at=r.migrated_at,
+        original_name=fr.file_name if fr else None,
+        original_path=fr.full_path if fr else None,
     )
 
 

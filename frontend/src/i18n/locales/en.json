@@ -189,6 +189,8 @@
     "targetFileId": "Target File ID",
     "targetFolderId": "Target Folder ID",
     "uuidFilename": "UUID Filename",
+    "originalName": "Original Filename",
+    "originalPath": "Original Path",
     "migratedAt": "Migrated At",
     "error": "Error",
     "revertMigration": "Revert Migration",

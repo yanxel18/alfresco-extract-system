@@ -76,6 +76,8 @@ export interface MigrationRecord {
   status: MigrationStatus;
   error_msg: string | null;
   migrated_at: string | null;
+  original_name: string | null;
+  original_path: string | null;
 }
 
 export interface MigrationProgress {

@@ -2,6 +2,7 @@
 import enum
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Text
+from sqlalchemy.orm import relationship
 from app.db.local import Base
 
 
@@ -27,3 +28,5 @@ class MigrationRecord(Base):
     status = Column(Enum(MigrationStatus), default=MigrationStatus.pending, nullable=False, index=True)
     error_msg = Column(Text, nullable=True)
     migrated_at = Column(DateTime, nullable=True)
+
+    file_record = relationship("FileRecord", lazy="joined", foreign_keys=[file_record_id])
