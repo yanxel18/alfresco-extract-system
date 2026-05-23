@@ -146,6 +146,19 @@ export function JobDetailPage() {
     job?.status === "migrating";
   const isJobCopying = job?.status === "copying";
 
+  // When copying finishes, do one final refresh of the file records so the
+  // last file (which may still show "pending" from the previous poll) gets
+  // its true "copied" status.
+  const prevJobStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevJobStatusRef.current;
+    const cur = job?.status;
+    if (prev === "copying" && cur !== "copying") {
+      refetchFiles();
+    }
+    prevJobStatusRef.current = cur;
+  }, [job?.status]);
+
   // Speed / ETA / elapsed tracking
   const prevSnapshotRef = useRef<{ bytes: number; time: number } | null>(null);
   const prevMigrationSnapshotRef = useRef<{ count: number; time: number } | null>(null);
