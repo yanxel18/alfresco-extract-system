@@ -18,6 +18,7 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
     result_expires=86400 * 7,
-    # Windows requires solo or threads pool — prefork does not work correctly on Windows
-    worker_pool="solo",
+    # Windows requires threads pool — prefork does not work correctly on Windows.
+    # "solo" would also work but is single-threaded and ignores --concurrency.
+    worker_pool="threads",
 )

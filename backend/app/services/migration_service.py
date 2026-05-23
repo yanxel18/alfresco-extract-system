@@ -121,11 +121,15 @@ def migrate_file_record(
 
     os.makedirs(str(settings.target_storage_path), exist_ok=True)
     dest = settings.target_storage_path / uuid_filename
-    # If a file already exists at dest (extremely unlikely UUID collision or re-run),
-    # remove it first so shutil.copy2 doesn't fail on some OS/FS combinations.
     if dest.exists():
         dest.unlink()
-    shutil.copy2(str(src), str(dest))
+
+    # Hard-link is instantaneous when source and dest share the same filesystem.
+    # Falls back to a full copy (cross-device / cross-volume).
+    try:
+        os.link(str(src), str(dest))
+    except OSError:
+        shutil.copy2(str(src), str(dest))
 
     row = target_session.execute(
         text("""
