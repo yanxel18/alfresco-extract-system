@@ -36,6 +36,7 @@ Copy `../env/backend.env.example` to `../env/backend.env` and fill in values.
 | `EXPORT_DIR`          | Output directory for extracted files and CSV       | `./exports`                                                   |
 | `TARGET_DB_URL`       | Target file-manager PostgreSQL (Phase 3 migration) | `postgresql://target_user:target_pass@target_db/target_files` |
 | `TARGET_STORAGE_PATH` | Flat storage directory for UUID-named files        | `./target-storage`                                            |
+| `COPY_CONCURRENCY`    | Number of files to copy concurrently (Phase 2)     | `8`                                                           |
 | `ALFRESCO_API_URL`    | Alfresco REST API URL (optional fallback)          | `http://localhost:8080/alfresco`                              |
 | `ALFRESCO_USER`       | Alfresco admin username                            | `admin`                                                       |
 | `ALFRESCO_PASS`       | Alfresco admin password                            | `admin`                                                       |
@@ -92,6 +93,8 @@ Pass an empty array `[]` to extract the entire site.
 
 **Files query params**: `status` (pending/copied/failed/skipped), `limit` (max 1000), `offset`
 
+> Results are sorted by status priority (copied → failed → pending) then newest ID first, so live copy activity appears at the top during an active job.
+
 ### Migration (Phase 3)
 
 | Method | Path                              | Description                                       |
@@ -101,6 +104,9 @@ Pass an empty array `[]` to extract the entire site.
 | GET    | `/api/jobs/{id}/migration/sql`    | Download SQL INSERT script (for manual execution) |
 | POST   | `/api/jobs/{id}/migration/pause`  | Pause active migration                            |
 | POST   | `/api/jobs/{id}/migration/resume` | Resume paused/failed migration                    |
+| DELETE | `/api/jobs/{id}/migration`        | Revert migration (delete target DB rows + files)  |
+
+**Migration GET query params**: `page` (default 1), `limit` (default 100, max 500) — records are sorted migrated-first, then failed, then pending.
 
 Migration can only be started when the job status is `done` or `migrated` (re-run). The task is idempotent — already-migrated files are skipped on re-run.
 
@@ -179,3 +185,4 @@ backend/
 - SQLAlchemy ORM for local PostgreSQL models (Job, FileRecord)
 - Celery tasks must be **idempotent** — safe to re-run on same job_id
 - All file paths via `pathlib.Path` — never string concatenation
+- Phase 2 file copy uses `ThreadPoolExecutor` with `COPY_CONCURRENCY` (default 8) concurrent threads; pause checks run between batches; DB commits are serialized on the main thread

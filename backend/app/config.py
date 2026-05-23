@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # Target system (simulated migration destination)
     target_db_url: str = "postgresql://target_user:target_pass@target_db:5432/target_files"
     target_storage_path: Path = Path("/app/target-storage")
+    # Number of files to copy concurrently (I/O-bound — threads, not processes)
+    copy_concurrency: int = 8
 
     @property
     def contentstore_path(self) -> Path:

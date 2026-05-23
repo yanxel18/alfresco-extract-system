@@ -142,6 +142,7 @@ class MigrationProgressOut(BaseModel):
     job_id: int
     status: str
     total: int
+    total_records: int  # total count for pagination
     migrated: int
     failed: int
     pending: int

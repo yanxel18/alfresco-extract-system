@@ -1,7 +1,7 @@
 """Migration API — Phase 3: move extracted files into the target file-manager system."""
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -21,25 +21,48 @@ def _get_job_or_404(job_id: int, db: Session) -> Job:
     return job
 
 
-def _migration_progress(job: Job, db: Session) -> MigrationProgressOut:
-    records = (
-        db.query(MigrationRecord)
-        .filter(MigrationRecord.job_id == job.id)
+def _migration_progress(
+    job: Job,
+    db: Session,
+    page: int = 1,
+    limit: int = 100,
+) -> MigrationProgressOut:
+    base_q = db.query(MigrationRecord).filter(MigrationRecord.job_id == job.id)
+
+    # Status counts from all records (not just the current page)
+    all_records = base_q.all()
+    counts = {s: 0 for s in MigrationStatus}
+    for r in all_records:
+        counts[r.status] += 1
+
+    total_records = len(all_records)
+
+    # Paginated, sorted: most recently migrated first, then pending/failed
+    from sqlalchemy import case as sa_case, nulls_last
+    status_priority = sa_case(
+        (MigrationRecord.status == MigrationStatus.migrated, 0),
+        (MigrationRecord.status == MigrationStatus.failed, 1),
+        (MigrationRecord.status == MigrationStatus.pending, 2),
+        else_=3,
+    )
+    page_records = (
+        base_q
+        .order_by(status_priority, MigrationRecord.migrated_at.desc().nulls_last(), MigrationRecord.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
         .all()
     )
-    counts = {s: 0 for s in MigrationStatus}
-    for r in records:
-        counts[r.status] += 1
 
     return MigrationProgressOut(
         job_id=job.id,
         status=job.status,
-        total=len(records),
+        total=total_records,
+        total_records=total_records,
         migrated=counts[MigrationStatus.migrated],
         failed=counts[MigrationStatus.failed],
         pending=counts[MigrationStatus.pending],
         skipped=counts[MigrationStatus.skipped],
-        records=[_mr_out(r) for r in records[-200:]],  # last 200
+        records=[_mr_out(r) for r in page_records],
     )
 
 
@@ -92,11 +115,16 @@ def start_migration(job_id: int, db: Session = Depends(get_local_db)):
     "/{job_id}/migration",
     response_model=MigrationProgressOut,
     summary="Migration progress",
-    description="Get current migration progress: counts per status and latest MigrationRecords.",
+    description="Get current migration progress with paginated records sorted by most recently migrated first.",
 )
-def get_migration(job_id: int, db: Session = Depends(get_local_db)):
+def get_migration(
+    job_id: int,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=100, le=500),
+    db: Session = Depends(get_local_db),
+):
     job = _get_job_or_404(job_id, db)
-    return _migration_progress(job, db)
+    return _migration_progress(job, db, page=page, limit=limit)
 
 
 @router.get(

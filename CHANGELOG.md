@@ -122,6 +122,25 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.3.0] — Unreleased
+
+### Added
+
+- **`COPY_CONCURRENCY` environment variable** (default `8`) — controls the number of files copied concurrently during Phase 2. Configurable via `env/backend.env`.
+- **Pagination on Migration tab** — `GET /api/jobs/{id}/migration` now accepts `page` and `limit` query params (default 100, max 500); response includes `total_records` for frontend pagination. Migration records table renders a `<Pagination>` component when total exceeds one page.
+- **Revert migration endpoint** — `DELETE /api/jobs/{id}/migration` documented in endpoint table.
+- **Original filename + path columns** in migration records table — backend JOIN on `FileRecord` populates `original_name` and `original_path` in `MigrationRecordOut`.
+
+### Changed
+
+- **Phase 2 file copy is now concurrent** — `file_copier.py` refactored from a sequential `for` loop to `ThreadPoolExecutor` with batch-of-N concurrency (N = `COPY_CONCURRENCY`). Pause signal is checked between batches; DB commits remain serialized on the main thread for safety.
+- **File Records sort order** — `GET /api/jobs/{id}/files` now returns records sorted by status priority (`copied → failed → pending → skipped`) then newest ID first, so live copy progress is visible at the top without scrolling.
+- **Migration records sort order** — migrated records appear first, then failed, then pending; `migrated_at DESC NULLS LAST` as secondary sort within each group.
+- **`MigrationProgressOut` schema** — added `total_records: int` field (total count across all pages, used for frontend pagination).
+- **`useMigration` React hook** — accepts `page` and `limit` parameters; both are included in the React Query cache key so page changes trigger a fresh fetch.
+
+---
+
 ## [2.2.0] — Unreleased
 
 ### Added

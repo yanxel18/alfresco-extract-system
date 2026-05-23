@@ -1,6 +1,7 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 from app.db.local import get_local_db
 from app.models.job import Job, FileRecord, FileStatus
@@ -25,6 +26,17 @@ def list_files(
     q = db.query(FileRecord).filter(FileRecord.job_id == job_id)
     if status:
         q = q.filter(FileRecord.status == status)
+
+    # Sort: active/completed files bubble to top so live copy activity is visible.
+    # Priority: copied(0) → failed(1) → pending(2) → skipped/other(3), then newest ID first.
+    status_priority = case(
+        (FileRecord.status == FileStatus.copied, 0),
+        (FileRecord.status == FileStatus.failed, 1),
+        (FileRecord.status == FileStatus.pending, 2),
+        else_=3,
+    )
+    q = q.order_by(status_priority, FileRecord.id.desc())
+
     total = q.count()
     files = q.offset(offset).limit(limit).all()
     return FileRecordPage(total=total, files=files)

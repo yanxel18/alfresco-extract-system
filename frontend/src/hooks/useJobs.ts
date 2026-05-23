@@ -81,10 +81,10 @@ export function useJobFiles(
   });
 }
 
-export function useMigration(jobId: number, jobStatus?: string) {
+export function useMigration(jobId: number, jobStatus?: string, page = 1, limit = 100) {
   return useQuery({
-    queryKey: ["jobs", jobId, "migration"],
-    queryFn: () => api.migration.get(jobId),
+    queryKey: ["jobs", jobId, "migration", { page, limit }],
+    queryFn: () => api.migration.get(jobId, page, limit),
     enabled:
       !!jobStatus &&
       !["created", "scanning", "scanned", "copying"].includes(jobStatus),

@@ -84,6 +84,7 @@ export interface MigrationProgress {
   job_id: number;
   status: string;
   total: number;
+  total_records: number;
   migrated: number;
   failed: number;
   pending: number;
@@ -218,8 +219,10 @@ export const api = {
       request<MigrationProgress>(`${BASE}/jobs/${id}/migrate`, {
         method: "POST",
       }),
-    get: (id: number) =>
-      request<MigrationProgress>(`${BASE}/jobs/${id}/migration`),
+    get: (id: number, page = 1, limit = 100) =>
+      request<MigrationProgress>(
+        `${BASE}/jobs/${id}/migration?page=${page}&limit=${limit}`,
+      ),
     pause: (id: number) =>
       request<MigrationProgress>(`${BASE}/jobs/${id}/migration/pause`, {
         method: "POST",

@@ -103,6 +103,7 @@ export function JobDetailPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
+  const [migrationPage, setMigrationPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<FileStatus | "">("");
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure();
@@ -127,6 +128,8 @@ export function JobDetailPage() {
   const { data: migration, refetch: refetchMigration } = useMigration(
     id,
     job?.status,
+    migrationPage,
+    PAGE_SIZE,
   );
   const migrationActions = useMigrationActions(id);
 
@@ -199,6 +202,9 @@ export function JobDetailPage() {
       : 0;
 
   const totalPages = filesData ? Math.ceil(filesData.total / PAGE_SIZE) : 1;
+  const migrationTotalPages = migration
+    ? Math.ceil(migration.total_records / PAGE_SIZE)
+    : 1;
 
   const handleStartCopy = async () => {
     try {
@@ -1065,11 +1071,22 @@ export function JobDetailPage() {
 
             {migration &&
               migration.records.length === 0 &&
-              migration.total === 0 && (
+              migration.total_records === 0 && (
                 <Alert icon={<Clock size={16} />} color="gray">
                   {t("migration.noRecords")}
                 </Alert>
               )}
+
+            {migrationTotalPages > 1 && (
+              <Group justify="center" mt="sm">
+                <Pagination
+                  total={migrationTotalPages}
+                  value={migrationPage}
+                  onChange={setMigrationPage}
+                  size="sm"
+                />
+              </Group>
+            )}
           </Stack>
         </Tabs.Panel>
       </Tabs>
