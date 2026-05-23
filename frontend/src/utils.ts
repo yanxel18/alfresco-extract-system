@@ -8,5 +8,7 @@ export function formatBytes(bytes: number, decimals = 1): string {
 
 export function formatDate(iso?: string): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString();
+  // Append Z if no timezone marker so the browser treats it as UTC, not local time.
+  const utc = iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z";
+  return new Date(utc).toLocaleString();
 }

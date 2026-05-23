@@ -812,7 +812,7 @@ export function JobDetailPage() {
                           </Group>
                         </Table.Td>
                         <Table.Td>
-                          <FileStatusBadge status={file.status} />
+                          <FileStatusBadge status={file.status} active={isJobCopying} />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed">
@@ -1133,7 +1133,7 @@ export function JobDetailPage() {
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <MigrationStatusBadge status={rec.status} />
+                          <MigrationStatusBadge status={rec.status} active={isJobMigrating} />
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" c="dimmed">
