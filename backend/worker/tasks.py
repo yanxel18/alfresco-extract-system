@@ -124,12 +124,14 @@ def migrate_site_task(self, job_id: int):
         failed_count = 0
 
         for idx, fr in enumerate(copied_records):
-            # Pause check — re-query job status every 50 files
-            if idx % 50 == 0:
-                local_db.refresh(job)
-                if job.status == JobStatus.paused:
-                    logger.info("[Task] migrate_site_task paused at idx=%d for job %d", idx, job_id)
-                    return
+            # Check job status on every file — stops immediately on pause or revert.
+            local_db.refresh(job)
+            if job.status != JobStatus.migrating:
+                logger.info(
+                    "[Task] migrate_site_task stopping at idx=%d, job status=%s for job %d",
+                    idx, job.status, job_id,
+                )
+                return
 
             # Fetch the (now pre-existing) MigrationRecord
             mr: MigrationRecord | None = (

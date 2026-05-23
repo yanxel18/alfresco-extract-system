@@ -164,6 +164,10 @@ def pause_migration(job_id: int, db: Session = Depends(get_local_db)):
     job.status = JobStatus.paused
     job.updated_at = datetime.utcnow()
     db.commit()
+    # Best-effort revoke — task will also stop via the per-file status check.
+    if job.celery_task_id:
+        from worker.celery_app import celery_app
+        celery_app.control.revoke(job.celery_task_id, terminate=True)
     db.refresh(job)
     return _migration_progress(job, db)
 
@@ -185,6 +189,11 @@ def revert_migration(job_id: int, db: Session = Depends(get_local_db)):
     job = _get_job_or_404(job_id, db)
     if job.status == JobStatus.migrating:
         raise HTTPException(status_code=400, detail="Cannot revert while migration is in progress — pause first")
+
+    # Revoke any lingering task that may still be winding down after a pause.
+    if job.celery_task_id:
+        from worker.celery_app import celery_app
+        celery_app.control.revoke(job.celery_task_id, terminate=True)
 
     target_db: Session = TargetSession()
     try:
