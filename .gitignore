@@ -4,7 +4,7 @@ node_modules/
 
 # Environment secrets
 
-.github
+
 # Python
 __pycache__/
 *.py[cod]
