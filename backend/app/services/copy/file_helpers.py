@@ -2,12 +2,17 @@
 Path and filename helpers for the file-copy phase.
 Runs in thread-pool threads — must be thread-safe (no shared mutable state).
 """
+import errno
 import os
 import shutil
 import time
 from pathlib import Path
 
 from app.config import settings
+
+
+TRANSIENT_COPY_ERRNOS = {errno.EAGAIN, errno.EACCES, errno.EBUSY}
+COPY_RETRY_DELAYS = (0.25, 0.5, 1.0, 2.0)
 
 
 def copy_file(
@@ -25,8 +30,34 @@ def copy_file(
     safe_mkdir(dest_path.parent)
 
     t0 = time.perf_counter()
-    shutil.copy2(src_path, dest_path)
+    copy_file_with_retry(src_path, dest_path)
     return dest_path, time.perf_counter() - t0
+
+
+def copy_file_with_retry(src_path: Path, dest_path: Path) -> None:
+    last_error: OSError | None = None
+
+    for attempt, delay in enumerate((0.0, *COPY_RETRY_DELAYS), start=1):
+        if delay:
+            time.sleep(delay)
+
+        try:
+            stream_copy(src_path, dest_path)
+            return
+        except OSError as exc:
+            if exc.errno not in TRANSIENT_COPY_ERRNOS:
+                raise
+            last_error = exc
+            if dest_path.exists():
+                dest_path.unlink(missing_ok=True)
+
+    if last_error is not None:
+        raise last_error
+
+
+def stream_copy(src_path: Path, dest_path: Path) -> None:
+    with src_path.open("rb") as src_file, dest_path.open("wb") as dest_file:
+        shutil.copyfileobj(src_file, dest_file, length=1024 * 1024)
 
 
 def safe_mkdir(path: Path) -> None:

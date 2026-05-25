@@ -82,6 +82,9 @@ npm run build
 - **Select All / Deselect All** controls
 - **Start Extraction** — creates job with only selected folder node IDs
 - **Extract All** — creates job for entire site
+- Alfresco shortcut entries are labeled in the tree for operator visibility
+- Folder-target shortcuts are shown conservatively and are **not** treated as real child folders for extraction
+- File-target shortcuts can still appear as files when the backend can resolve their content safely
 
 ### 📋 Jobs Page (`/jobs`)
 
@@ -171,3 +174,9 @@ FROM nginx:alpine
 docker compose up -d
 # UI available at http://localhost:80
 ```
+
+## Notes for Operators
+
+- If you browse a folder and see a shortcut entry, that does not mean the physical target folder exists under the same Alfresco path.
+- The UI intentionally avoids expanding folder-target shortcuts inline so operators do not mistake a remote target for a real child folder.
+- When the backend is deployed against a remote Windows-hosted Alfresco contentstore over SMB/CIFS, copy throughput should be tuned for stability first, not maximum parallelism.

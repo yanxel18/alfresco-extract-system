@@ -76,6 +76,7 @@
     "searchResults": "{{count}} result found",
     "searchResults_plural": "{{count}} results found",
     "searchMinChars": "Type at least 2 characters to search",
+    "shortcut": "Shortcut",
     "selectedSizeTooltip": "Total selected size",
     "columns": {
       "name": "Name",

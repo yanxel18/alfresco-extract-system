@@ -53,7 +53,7 @@ services:
     env_file: .env
     volumes:
       - ./exports:/app/exports # extracted files on host
-      - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
+      - alf_data:/alf_data:ro # Alfresco contentstore (CIFS/SMB share, read-only)
       - ./target-storage:/app/target-storage # simulated target file storage
     depends_on:
       redis:
@@ -89,7 +89,7 @@ services:
     env_file: .env
     volumes:
       - ./exports:/app/exports # write copied files here
-      - ${ALF_DATA_HOST_PATH}:/alf_data:ro # Alfresco contentstore (read-only)
+      - alf_data:/alf_data:ro # Alfresco contentstore (CIFS/SMB share, read-only)
       - ./target-storage:/app/target-storage # simulated target file storage
     depends_on:
       redis:
@@ -102,3 +102,9 @@ services:
 volumes:
   local_db_data: # persistent PostgreSQL data for job tracking
   target_db_data: # persistent PostgreSQL data for simulated target system
+  alf_data: # Alfresco contentstore — mounted directly via SMB/CIFS by Docker
+    driver: local
+    driver_opts:
+      type: cifs
+      device: //172.31.12.119/alf_data
+      o: "username=administrator,password=password-0,vers=3.0,uid=0,gid=0,file_mode=0444,dir_mode=0555,nobrl,cache=none"

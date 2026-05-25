@@ -1,15 +1,17 @@
 import { useCallback, useContext } from "react";
-import { Box, Group, Text, Checkbox, ActionIcon, Loader, Tooltip } from "@mantine/core";
 import {
-  ChevronRight,
-  ChevronDown,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
+  Box,
+  Group,
+  Text,
+  Checkbox,
+  ActionIcon,
+  Loader,
+  Tooltip,
+} from "@mantine/core";
+import { ChevronRight, ChevronDown, Folder, FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
-import type { FileNodeBrief } from "@/api/client";
-import { ColumnWidthContext, type TreeNodeState, type ColKey } from "./ColumnContext";
+import { ColumnWidthContext, type TreeNodeState } from "./ColumnContext";
 import { FileRow } from "./FileRow";
 
 /** Recursively collect all loaded file node IDs from a folder and its descendants. */
@@ -25,7 +27,7 @@ export function collectFileIds(node: TreeNodeState): number[] {
 export function collectFolderIds(node: TreeNodeState): number[] {
   const ids: number[] = [];
   for (const child of node.children ?? []) {
-    ids.push(child.node_id);
+    if (child.selectable !== false) ids.push(child.node_id);
     ids.push(...collectFolderIds(child));
   }
   return ids;
@@ -82,6 +84,9 @@ export function FolderTreeNode({
   const { t } = useTranslation();
 
   const handleExpand = useCallback(async () => {
+    if (node.is_shortcut && !node.has_children) {
+      return;
+    }
     if (node.expanded) {
       onUpdate(node.node_id, { expanded: false });
       return;
@@ -89,7 +94,9 @@ export function FolderTreeNode({
     if (node.children !== undefined) {
       onUpdate(node.node_id, { expanded: true });
       if (selectedIds.has(node.node_id)) {
-        const childFolderIds = node.children.map((c) => c.node_id);
+        const childFolderIds = node.children
+          .filter((c) => c.selectable !== false)
+          .map((c) => c.node_id);
         if (childFolderIds.length > 0) onBulkToggle(childFolderIds, true);
         const childFileIds = (node.files ?? []).map((f) => f.node_id);
         if (childFileIds.length > 0) onBulkToggleFiles(childFileIds, true);
@@ -118,10 +125,12 @@ export function FolderTreeNode({
           result.files.map((f) => [f.node_id, node.node_id]),
         );
         const folderParMap = new Map<number, number>(
-          children.map((c) => [c.node_id, node.node_id]),
+          children
+            .filter((c) => c.selectable !== false)
+            .map((c) => [c.node_id, node.node_id]),
         );
         onRegisterItems(
-          children.map((c) => c.node_id),
+          children.filter((c) => c.selectable !== false).map((c) => c.node_id),
           result.files.map((f) => f.node_id),
           sizeMap,
           fileParMap,
@@ -129,7 +138,9 @@ export function FolderTreeNode({
         );
       }
       if (selectedIds.has(node.node_id)) {
-        const childFolderIds = children.map((c) => c.node_id);
+        const childFolderIds = children
+          .filter((c) => c.selectable !== false)
+          .map((c) => c.node_id);
         if (childFolderIds.length > 0) onBulkToggle(childFolderIds, true);
         const childFileIds = result.files.map((f) => f.node_id);
         if (childFileIds.length > 0) onBulkToggleFiles(childFileIds, true);
@@ -197,6 +208,7 @@ export function FolderTreeNode({
         <Checkbox
           size="sm"
           checked={isSelected}
+          disabled={node.selectable === false}
           onChange={(e) => {
             const checked = e.currentTarget.checked;
             onToggle(node.node_id, checked);
@@ -234,6 +246,11 @@ export function FolderTreeNode({
               {node.name}
             </Text>
           </Tooltip>
+          {node.is_shortcut && (
+            <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+              {t("explorer.shortcut")}
+            </Text>
+          )}
         </Group>
 
         {/* Empty spacers to keep header columns aligned */}

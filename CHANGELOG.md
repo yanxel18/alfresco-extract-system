@@ -7,6 +7,23 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.4.0] — Unreleased
+
+### Added
+
+- **Windows external-Alfresco deployment guidance** across the Markdown docs: Docker Desktop + external PostgreSQL/contentstore, CIFS mount guidance, and `pg_hba.conf` requirement for Docker subnet access.
+- **Shortcut metadata in browse responses** — folder browse responses now document and expose `is_shortcut` and `selectable` semantics for tree consumers.
+
+### Changed
+
+- **Legacy Alfresco shortcut handling** — shortcut resolution now documents support for deployments that store targets in `cm:destination` NodeRef properties as well as `app:linkedNode` associations.
+- **Strict folder-shortcut behavior** — folder-target shortcuts are no longer documented as if they were real child folders. They are shown to operators as shortcuts and are not meant to be expanded or extracted inline as physical descendants.
+- **Remote SMB copy guidance** — documentation now recommends `COPY_CONCURRENCY=1` for remote Windows SMB/CIFS contentstores and explains the streamed-copy-with-retry behavior used for stability.
+
+### Documentation
+
+- Updated root `README.md`, `backend/README.md`, `frontend/README.md`, `backend/system_en.md`, and `backend/system_jp.md` to reflect the current deployment and shortcut behavior.
+
 ## [2.0.0] — Unreleased
 
 ### Added

@@ -76,6 +76,7 @@ Alfresco PostgreSQL (読み取り専用) — ソースメタデータ
 - **アクセス**: 読み取り専用。書き込み不可。`text()` による生SQLのみ — `alf_*` テーブルにORMモデルはマッピングしない。
 - **接続**: `app/db/alfresco.py` が SQLAlchemy エンジン（`pool_pre_ping=True`）で管理。
 - **セッションライフサイクル**: フェーズ1スキャン中のみ開く。フェーズ2・3では使用しない。
+- **デプロイ補足**: バックエンドをDockerで動かし、外部のAlfresco PostgreSQLに接続する場合は、`pg_hba.conf` でDockerコンテナのサブネットを許可する必要があります。Windowsホスト上のDBクライアントが接続できても、コンテナは拒否されることがあります。
 
 ```python
 # config.py
@@ -192,11 +193,16 @@ store://2024/1/15/10/30/a1b2c3d4-uuid.bin
 
 ### 4.8 ショートカット解決（app:filelink / app:folderlink）
 
-Alfrescoは「ショートカット」（`app:filelink` と `app:folderlink` 型ノード）をサポートします。本システムはこれを透過的に解決します：
+Alfrescoのショートカット系ノード（`app:filelink` / `app:folderlink`）は、環境によってターゲット参照の持ち方が異なります。
 
-- **`app:filelink`**: 物理コンテンツはターゲットノードから取得し、エクスポートのパスはショートカット自身のツリー上の位置を使用。
-- **`app:folderlink`**: ターゲットフォルダをサブツリーとして再帰走査。パスはサイトツリー内のショートカットフォルダのパスをプレフィックスとして付与。
-- **循環検出**: `_visited` セットにより、循環ショートカット参照による無限ループを防止。
+- `app:linkedNode` のピア関連
+- 旧形式の `cm:destination` NodeRef プロパティ
+
+本システムは現在、これらを慎重に扱います：
+
+- **ファイルを指すショートカット**: 解決先に実際の `cm:content` がある場合のみ、ファイルとして表示・処理。
+- **フォルダを指すショートカット**: 参照先の存在は表示するが、現在のフォルダ配下の実フォルダのようには展開・抽出しない。
+- **運用上の目的**: ショートカット先のフォルダが現在のAlfrescoパス配下に実在するかのような誤解を防ぐ。
 
 ### 4.9 パスの構築
 
@@ -258,7 +264,11 @@ child_node_id → parent_node_id → ... → doclibルート
    - 成功時: `status=copied`・`local_export_path`・`transfer_speed_bps` を設定。
    - 失敗時: `status=failed`・`error_msg` を設定。
    - ファイルごとにコミット（フロントエンドがリアルタイムで進捗を確認可能）。
-   - 10件の完了ごとに一時停止シグナルを確認。
+
+**リモートSMB/CIFS補足:** `alf_data/contentstore` をWindows共有からDockerへマウントしている場合、最大並列数より安定性を優先します。コピー処理は一時的な読込失敗に対してリトライ付きのストリーミングコピーを行い、本番運用では通常 `COPY_CONCURRENCY=1` を推奨します。
+
+- 10件の完了ごとに一時停止シグナルを確認。
+
 6. **ループ後の照合**: `local_export_path` が設定されているが `status=pending` のまま残っているレコード（ORMの期限切れ競合状態で発生）を `copied` に修正。
 7. `content_url` のない残り `pending` レコードを `skipped` に設定。
 8. DBから最終的なメタデータCSVを再生成。

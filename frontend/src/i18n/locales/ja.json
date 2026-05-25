@@ -76,6 +76,7 @@
     "searchResults": "{{count}}件の結果",
     "searchResults_plural": "{{count}}件の結果",
     "searchMinChars": "2文字以上入力して検索",
+    "shortcut": "ショートカット",
     "selectedSizeTooltip": "選択中の合計サイズ",
     "columns": {
       "name": "名前",

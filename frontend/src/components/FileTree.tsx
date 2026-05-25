@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { Box, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { BrowseResult, FileNodeBrief } from "@/api/client";
+import type { FileNodeBrief } from "@/api/client";
 import {
   ColumnWidthContext,
   DEFAULT_COL_WIDTHS,
@@ -43,18 +43,21 @@ export function FileTree({
     const fileParMap = new Map<number, number>(
       rootResult.files.map((f) => [f.node_id, rootResult.current_node_id]),
     );
-    const folderParMap = new Map<number, number>(
-      rootResult.folders.map((f) => [f.node_id, rootResult.current_node_id]),
-    );
     onRegisterItems(
-      rootResult.folders.map((f) => f.node_id),
+      rootResult.folders
+        .filter((f) => f.selectable !== false)
+        .map((f) => f.node_id),
       rootResult.files.map((f) => f.node_id),
       sizeMap,
       fileParMap,
-      folderParMap,
+      new Map(
+        rootResult.folders
+          .filter((f) => f.selectable !== false)
+          .map((f) => [f.node_id, rootResult.current_node_id]),
+      ),
     );
-  // Run only once on mount — rootResult is stable after site load
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Run only once on mount — rootResult is stable after site load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Stable updater that always operates on fresh state (no stale closures)

@@ -115,40 +115,12 @@ def get_all_file_nodes(
                 node["shortcut_path_root_id"] = _path_root_id
                 results.append(node)
 
-    # 4. Recurse into app:folderlink targets
+    # 4. Folder shortcuts are intentionally not traversed.
     if shortcuts["folderlinks"]:
         logger.info(
-            "Found %d app:folderlink shortcut(s) under node %d",
+            "Skipping %d folder shortcut(s) under node %d",
             len(shortcuts["folderlinks"]), doclib_node_id,
         )
-        from app.services.path_builder import resolve_path as _resolve_path  # noqa: PLC0415
-        for folderlink_id in shortcuts["folderlinks"]:
-            target_id = resolve_shortcut_target(db, folderlink_id)
-            if target_id is None or target_id in _visited:
-                if target_id in _visited:
-                    logger.warning(
-                        "Circular folder shortcut: node %d → %d already visited",
-                        folderlink_id, target_id,
-                    )
-                continue
-            # Compute the shortcut folder's own path in the current site tree
-            try:
-                shortcut_path = _resolve_path(db, folderlink_id, doclib_node_id)
-            except Exception:
-                shortcut_path = ""
-            logger.info(
-                "Following folder shortcut node %d (path=%s) → target %d",
-                folderlink_id, shortcut_path, target_id,
-            )
-            sub_nodes = get_all_file_nodes(
-                db, target_id, _visited,
-                _path_prefix=shortcut_path,
-                _path_root_id=target_id,
-            )
-            for node in sub_nodes:
-                if node["node_id"] not in seen_ids:
-                    seen_ids.add(node["node_id"])
-                    results.append(node)
 
     return results
 

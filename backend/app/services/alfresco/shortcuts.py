@@ -12,29 +12,108 @@ from .constants import NS_CM, NS_APP
 
 logger = logging.getLogger(__name__)
 
+NODE_REF_PREFIX = "workspace://SpacesStore/"
+
+
+def _extract_uuid_from_node_ref(node_ref: Optional[str]) -> Optional[str]:
+    if not node_ref or not node_ref.startswith(NODE_REF_PREFIX):
+        return None
+    return node_ref[len(NODE_REF_PREFIX):]
+
+
+def resolve_shortcut_targets(db: Session, node_ids: list[int]) -> dict[int, int]:
+    """
+    Resolve shortcut node_ids to their target node_ids.
+
+    Supports both modern app:linkedNode associations and legacy cm:destination
+    properties seen in some Alfresco deployments.
+    """
+    if not node_ids:
+        return {}
+
+    placeholders = ", ".join(f":nid_{i}" for i in range(len(node_ids)))
+    params = {f"nid_{i}": nid for i, nid in enumerate(node_ids)}
+    params["ns_app"] = NS_APP
+
+    assoc_sql = text(f"""
+        SELECT n.id AS node_id, na.target_node_id
+        FROM alf_node n
+        JOIN alf_qname type_q ON n.type_qname_id = type_q.id
+        JOIN alf_namespace type_ns ON type_q.ns_id = type_ns.id
+        JOIN alf_node_assoc na ON na.source_node_id = n.id
+        JOIN alf_qname assoc_q ON na.type_qname_id = assoc_q.id
+        JOIN alf_namespace assoc_ns ON assoc_q.ns_id = assoc_ns.id
+        WHERE n.id IN ({placeholders})
+          AND type_ns.uri = :ns_app
+          AND type_q.local_name IN ('filelink', 'folderlink')
+          AND assoc_ns.uri = :ns_app
+          AND assoc_q.local_name = 'linkedNode'
+    """)
+    targets = {
+        r.node_id: r.target_node_id
+        for r in db.execute(assoc_sql, params).fetchall()
+        if r.target_node_id is not None
+    }
+
+    unresolved = [nid for nid in node_ids if nid not in targets]
+    if not unresolved:
+        return targets
+
+    unresolved_placeholders = ", ".join(f":uid_{i}" for i in range(len(unresolved)))
+    legacy_params = {f"uid_{i}": nid for i, nid in enumerate(unresolved)}
+    legacy_params["ns_app"] = NS_APP
+    legacy_params["ns_cm"] = NS_CM
+
+    legacy_sql = text(f"""
+        SELECT n.id AS node_id, np.string_value AS destination_ref
+        FROM alf_node n
+        JOIN alf_qname type_q ON n.type_qname_id = type_q.id
+        JOIN alf_namespace type_ns ON type_q.ns_id = type_ns.id
+        JOIN alf_node_properties np ON np.node_id = n.id
+        JOIN alf_qname prop_q ON np.qname_id = prop_q.id
+        JOIN alf_namespace prop_ns ON prop_q.ns_id = prop_ns.id
+        WHERE n.id IN ({unresolved_placeholders})
+          AND type_ns.uri = :ns_app
+          AND type_q.local_name IN ('filelink', 'folderlink')
+          AND prop_ns.uri = :ns_cm
+          AND prop_q.local_name = 'destination'
+    """)
+    legacy_rows = db.execute(legacy_sql, legacy_params).fetchall()
+
+    uuid_by_shortcut = {
+        r.node_id: _extract_uuid_from_node_ref(r.destination_ref)
+        for r in legacy_rows
+        if _extract_uuid_from_node_ref(r.destination_ref)
+    }
+    if not uuid_by_shortcut:
+        return targets
+
+    unique_uuids = sorted(set(uuid_by_shortcut.values()))
+    uuid_placeholders = ", ".join(f":uuid_{i}" for i in range(len(unique_uuids)))
+    uuid_params = {f"uuid_{i}": value for i, value in enumerate(unique_uuids)}
+    target_sql = text(f"""
+        SELECT id, uuid
+        FROM alf_node
+        WHERE uuid IN ({uuid_placeholders})
+    """)
+    target_rows = db.execute(target_sql, uuid_params).fetchall()
+    target_by_uuid = {r.uuid: r.id for r in target_rows}
+
+    for shortcut_id, target_uuid in uuid_by_shortcut.items():
+        target_id = target_by_uuid.get(target_uuid)
+        if target_id is not None:
+            targets[shortcut_id] = target_id
+
+    return targets
+
 
 def resolve_shortcut_target(db: Session, node_id: int) -> Optional[int]:
     """
     If node_id is an app:filelink or app:folderlink shortcut, return the target node_id
-    via the app:linkedNode peer association. Returns None if the node is not a shortcut.
+    via the app:linkedNode peer association or legacy cm:destination property.
+    Returns None if the node is not a shortcut.
     """
-    sql = text("""
-        SELECT na.target_node_id
-        FROM alf_node n
-        JOIN alf_qname  type_q  ON n.type_qname_id  = type_q.id
-        JOIN alf_namespace type_ns ON type_q.ns_id  = type_ns.id
-        JOIN alf_node_assoc na   ON na.source_node_id = n.id
-        JOIN alf_qname  assoc_q  ON na.type_qname_id  = assoc_q.id
-        JOIN alf_namespace assoc_ns ON assoc_q.ns_id  = assoc_ns.id
-        WHERE n.id = :node_id
-          AND type_ns.uri  = :ns_app
-          AND type_q.local_name  IN ('filelink', 'folderlink')
-          AND assoc_ns.uri = :ns_app
-          AND assoc_q.local_name = 'linkedNode'
-        LIMIT 1
-    """)
-    row = db.execute(sql, {"node_id": node_id, "ns_app": NS_APP}).fetchone()
-    return row.target_node_id if row else None
+    return resolve_shortcut_targets(db, [node_id]).get(node_id)
 
 
 def _detect_shortcut_types(db: Session, node_ids: list[int]) -> dict[int, str]:
@@ -110,46 +189,70 @@ def _resolve_filelink_nodes(db: Session, shortcut_node_ids: list[int]) -> list[d
     """
     if not shortcut_node_ids:
         return []
+
+    target_by_shortcut = resolve_shortcut_targets(db, shortcut_node_ids)
+    if not target_by_shortcut:
+        return []
+
+    shortcut_placeholders = ", ".join(f":sid_{i}" for i in range(len(shortcut_node_ids)))
+    shortcut_params = {f"sid_{i}": nid for i, nid in enumerate(shortcut_node_ids)}
+    shortcut_sql = text(f"""
+        SELECT id AS node_id, uuid
+        FROM alf_node
+        WHERE id IN ({shortcut_placeholders})
+    """)
+    shortcut_rows = db.execute(shortcut_sql, shortcut_params).fetchall()
+    shortcut_uuid_map = {r.node_id: r.uuid for r in shortcut_rows}
+
     content_qid_row = db.execute(text("""
         SELECT q.id FROM alf_qname q JOIN alf_namespace ns ON q.ns_id = ns.id
         WHERE ns.uri = :ns_cm AND q.local_name = 'content' LIMIT 1
     """), {"ns_cm": NS_CM}).fetchone()
     if not content_qid_row:
         return []
-    content_qid = content_qid_row.id
 
-    placeholders = ", ".join(f":sid_{i}" for i in range(len(shortcut_node_ids)))
-    sql = text(f"""
+    target_ids = sorted(set(target_by_shortcut.values()))
+    target_placeholders = ", ".join(f":tid_{i}" for i in range(len(target_ids)))
+    content_params = {f"tid_{i}": nid for i, nid in enumerate(target_ids)}
+    content_params["content_qid"] = content_qid_row.id
+    content_sql = text(f"""
         SELECT
-            shortcut.id   AS node_id,
-            shortcut.uuid AS uuid,
+            n.id AS target_node_id,
             cu.content_url,
             cu.content_size AS file_size_bytes
-        FROM alf_node shortcut
-        JOIN alf_node_assoc na ON na.source_node_id = shortcut.id
-        JOIN alf_qname  assoc_q  ON na.type_qname_id = assoc_q.id
-        JOIN alf_namespace assoc_ns ON assoc_q.ns_id = assoc_ns.id
+        FROM alf_node n
         JOIN alf_node_properties np
-             ON np.node_id  = na.target_node_id
+             ON np.node_id = n.id
             AND np.qname_id = :content_qid
-        JOIN alf_content_data cd  ON cd.id = np.long_value
-        JOIN alf_content_url  cu  ON cu.id = cd.content_url_id
-        WHERE shortcut.id IN ({placeholders})
-          AND assoc_ns.uri = :ns_app
-          AND assoc_q.local_name = 'linkedNode'
+        JOIN alf_content_data cd ON cd.id = np.long_value
+        JOIN alf_content_url cu ON cu.id = cd.content_url_id
+        WHERE n.id IN ({target_placeholders})
     """)
-    params = {f"sid_{i}": nid for i, nid in enumerate(shortcut_node_ids)}
-    params["content_qid"] = content_qid
-    params["ns_app"] = NS_APP
-    rows = db.execute(sql, params).fetchall()
-    return [
-        {
-            "node_id": r.node_id,
-            "uuid": r.uuid,
+    content_rows = db.execute(content_sql, content_params).fetchall()
+    content_by_target = {
+        r.target_node_id: {
             "content_url": r.content_url,
             "file_size_bytes": r.file_size_bytes,
-            "shortcut_path_prefix": None,
-            "shortcut_path_root_id": None,
         }
-        for r in rows
-    ]
+        for r in content_rows
+    }
+
+    results: list[dict] = []
+    for shortcut_id in shortcut_node_ids:
+        target_id = target_by_shortcut.get(shortcut_id)
+        target_content = content_by_target.get(target_id)
+        shortcut_uuid = shortcut_uuid_map.get(shortcut_id)
+        if target_content is None or shortcut_uuid is None:
+            continue
+        results.append(
+            {
+                "node_id": shortcut_id,
+                "uuid": shortcut_uuid,
+                "content_url": target_content["content_url"],
+                "file_size_bytes": target_content["file_size_bytes"],
+                "shortcut_path_prefix": None,
+                "shortcut_path_root_id": None,
+            }
+        )
+
+    return results

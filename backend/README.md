@@ -41,6 +41,8 @@ Copy `../env/backend.env.example` to `../env/backend.env` and fill in values.
 | `ALFRESCO_USER`       | Alfresco admin username                            | `admin`                                                       |
 | `ALFRESCO_PASS`       | Alfresco admin password                            | `admin`                                                       |
 
+> For a remote Alfresco `contentstore` mounted over SMB/CIFS, prefer `COPY_CONCURRENCY=1`. Higher values can reduce stability and trigger transient `resource unavailable` read errors.
+
 ## API Endpoints
 
 ### Health
@@ -58,6 +60,11 @@ Copy `../env/backend.env.example` to `../env/backend.env` and fill in values.
 | GET    | `/api/sites/{name}/search` | Search files by name in a site |
 
 **Browse query params**: `parent_id` (integer, optional — omit for doclib root)
+
+Browse responses now include shortcut metadata:
+
+- `is_shortcut` — the entry is an Alfresco shortcut-like node
+- `selectable` — whether the folder should be selectable for extraction
 
 **Search query params**: `q` (search term, min 2 chars), `limit` (default 50)
 
@@ -153,6 +160,22 @@ docker compose up -d
 
 The backend service starts on port 8000 internally (exposed via nginx frontend on port 80).
 
+### Docker Desktop on Windows + external Alfresco
+
+For the deployment where this app runs in Docker Desktop and Alfresco runs separately on Windows:
+
+1. Set `ALFRESCO_DB_URL` and `ALFRESCO_API_URL` to the external Alfresco server IP or hostname.
+2. Mount the remote `alf_data` share as a **Docker CIFS volume** in `docker-compose.yml`.
+3. Do not depend on a Windows mapped drive such as `Z:` inside the container runtime.
+4. Ensure Alfresco PostgreSQL `pg_hba.conf` allows the **Docker container subnet**. A host tool such as HeidiSQL working from Windows does not guarantee that the container can connect.
+5. For SMB-backed contentstores, keep `COPY_CONCURRENCY=1` unless load testing shows a higher value is stable.
+
+### Shortcut behavior
+
+- `app:filelink` shortcuts that resolve to real content are surfaced as files.
+- Legacy shortcuts stored through `cm:destination` NodeRef values are also resolved when possible.
+- Folder-target shortcuts are shown in browse results as shortcuts for operator visibility, but they are not expanded inline and are not extracted as if they were real child folders.
+
 ## Project Structure
 
 ```
@@ -186,3 +209,4 @@ backend/
 - Celery tasks must be **idempotent** — safe to re-run on same job_id
 - All file paths via `pathlib.Path` — never string concatenation
 - Phase 2 file copy uses `ThreadPoolExecutor` with `COPY_CONCURRENCY` (default 8) concurrent threads; pause checks run between batches; DB commits are serialized on the main thread
+- For remote SMB/CIFS contentstores, the copy helper uses streamed copy with retry, and deployment should usually set `COPY_CONCURRENCY=1`

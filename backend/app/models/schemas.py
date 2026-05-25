@@ -88,6 +88,8 @@ class FolderNodeOut(BaseModel):
     node_id: int
     name: str
     has_children: bool
+    is_shortcut: bool = False
+    selectable: bool = True
 
 
 class FileNodeBrief(BaseModel):
@@ -97,6 +99,7 @@ class FileNodeBrief(BaseModel):
     size_bytes: Optional[int] = None
     modifier: Optional[str] = None
     modified_at: Optional[str] = None
+    is_shortcut: bool = False
 
 
 class FolderSizeOut(BaseModel):

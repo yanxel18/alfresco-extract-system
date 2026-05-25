@@ -104,6 +104,8 @@ export interface FolderNode {
   node_id: number;
   name: string;
   has_children: boolean;
+  is_shortcut?: boolean;
+  selectable?: boolean;
 }
 
 export interface FileNodeBrief {
@@ -113,6 +115,7 @@ export interface FileNodeBrief {
   size_bytes?: number;
   modifier?: string;
   modified_at?: string;
+  is_shortcut?: boolean;
 }
 
 export interface BrowseResult {
@@ -236,6 +239,8 @@ export const api = {
       }),
     sqlUrl: (id: number) => `${BASE}/jobs/${id}/migration/sql`,
     revert: (id: number) =>
-      request<MigrationProgress>(`${BASE}/jobs/${id}/migration`, { method: "DELETE" }),
+      request<MigrationProgress>(`${BASE}/jobs/${id}/migration`, {
+        method: "DELETE",
+      }),
   },
 };

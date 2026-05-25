@@ -76,6 +76,7 @@ Target PostgreSQL — migration destination
 - **Access:** Read-only. Never written to. Uses raw SQL via `text()` — no ORM models mapped to `alf_*` tables.
 - **Connection:** Managed by `app/db/alfresco.py` via SQLAlchemy engine with `pool_pre_ping=True`.
 - **Session lifecycle:** Opened for the duration of a Phase 1 scan, then closed. Never held open during Phase 2 or 3.
+- **Deployment note:** When the backend runs in Docker against an external Alfresco PostgreSQL server, `pg_hba.conf` must allow the Docker container subnet. A DB client running on the Windows host may succeed while the container is still rejected.
 
 ```python
 # config.py
@@ -192,11 +193,16 @@ Strip the `store://` prefix and prepend `{ALF_DATA_PATH}/contentstore/`:
 
 ### 4.8 Shortcut Resolution (app:filelink / app:folderlink)
 
-Alfresco supports "shortcuts" — nodes of type `app:filelink` and `app:folderlink`. The system transparently resolves these:
+Alfresco supports shortcut-like nodes such as `app:filelink` and `app:folderlink`. In practice, deployments may store their target in either:
 
-- **`app:filelink`**: The physical content is fetched from the target node, but the path in the export uses the shortcut's own location in the tree.
-- **`app:folderlink`**: The target folder is recursed as a subtree; paths are prefixed with the shortcut folder's path in the site tree.
-- **Cycle detection**: A `_visited` set prevents infinite loops from circular shortcut references.
+- `app:linkedNode` peer associations, or
+- legacy `cm:destination` NodeRef properties.
+
+The system now handles these conservatively:
+
+- **File-target shortcuts**: If the resolved target has real `cm:content`, the entry can be surfaced as a file.
+- **Folder-target shortcuts**: The browse API exposes them as shortcuts for visibility, but does **not** expand them inline or extract them as if they were real child folders.
+- **Operator safety goal**: Avoid implying that a target folder physically exists under the shortcut's current Alfresco path.
 
 ### 4.9 Path Building
 
@@ -258,7 +264,11 @@ Results are cached per-session (`functools.lru_cache` style) to avoid re-queryin
    - On success: set `status=copied`, `local_export_path`, `transfer_speed_bps`.
    - On failure: set `status=failed`, `error_msg`.
    - Commit per-file so frontend sees live progress.
-   - Check pause signal every 10 completions.
+
+**Remote SMB/CIFS note:** When `alf_data/contentstore` is mounted from a remote Windows share into Docker, stability matters more than raw throughput. The copy helper uses streamed copy with retry for transient read errors, and production deployments should usually set `COPY_CONCURRENCY=1`.
+
+- Check pause signal every 10 completions.
+
 6. **Post-loop reconciliation**: Any record with `local_export_path` set but `status=pending` (missed due to ORM expiry race) is corrected to `copied`.
 7. Mark remaining `pending` records with no `content_url` as `skipped`.
 8. Regenerate final metadata CSV from DB.
